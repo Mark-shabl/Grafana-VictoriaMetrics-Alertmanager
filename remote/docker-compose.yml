@@ -1,0 +1,36 @@
+services:
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    network_mode: host
+    pid: host
+    restart: always
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - "--path.rootfs=/host"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    network_mode: host
+    restart: always
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+
+  vmagent:
+    image: victoriametrics/vmagent:v1.137.0
+    network_mode: host
+    depends_on:
+      - node_exporter
+      - cadvisor
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--remoteWrite.url=${CENTRAL_URL}/api/v1/write"
+      - "--remoteWrite.externalLabels=host=${HOSTNAME:-unknown}"
+    restart: always

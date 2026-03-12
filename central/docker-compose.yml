@@ -1,0 +1,89 @@
+services:
+  vmagent:
+    image: victoriametrics/vmagent:v1.137.0
+    depends_on:
+      - victoriametrics
+    ports:
+      - 8429:8429
+    volumes:
+      - vmagentdata:/vmagentdata
+      - ./vmagent/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+    restart: always
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.137.0
+    ports:
+      - 8428:8428
+      - 8089:8089
+      - 8089:8089/udp
+      - 2003:2003
+      - 2003:2003/udp
+      - 4242:4242
+    volumes:
+      - vmdata:/storage
+    command:
+      - "--storageDataPath=/storage"
+      - "--retentionPeriod=30d"
+      - "--graphiteListenAddr=:2003"
+      - "--opentsdbListenAddr=:4242"
+      - "--httpListenAddr=:8428"
+      - "--influxListenAddr=:8089"
+      - "--vmalert.proxyURL=http://vmalert:8880"
+    restart: always
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    depends_on:
+      - victoriametrics
+    ports:
+      - 3000:3000
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: always
+
+  vmalert:
+    image: victoriametrics/vmalert:v1.137.0
+    depends_on:
+      - victoriametrics
+      - alertmanager
+    ports:
+      - 8880:8880
+    volumes:
+      - ./rules/alerts.yml:/etc/alerts/alerts.yml
+      - ./rules/alerts-health.yml:/etc/alerts/alerts-health.yml
+      - ./rules/alerts-vmagent.yml:/etc/alerts/alerts-vmagent.yml
+      - ./rules/alerts-vmalert.yml:/etc/alerts/alerts-vmalert.yml
+    command:
+      - "--datasource.url=http://victoriametrics:8428/"
+      - "--remoteRead.url=http://victoriametrics:8428/"
+      - "--remoteWrite.url=http://vmagent:8429/"
+      - "--notifier.url=http://alertmanager:9093/"
+      - "--rule=/etc/alerts/*.yml"
+      - "--external.url=http://127.0.0.1:3000"
+      - '--external.alert.source=explore?orgId=1&left={"datasource":"VictoriaMetrics","queries":[{"expr":{{.Expr|jsonEscape|queryEscape}},"refId":"A"}],"range":{"from":"{{ .ActiveAt.UnixMilli }}","to":"now"}}'
+    restart: always
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    volumes:
+      - ./alertmanager/alertmanager.yml:/config/alertmanager.yml
+    command:
+      - "--config.file=/config/alertmanager.yml"
+    ports:
+      - 9093:9093
+    restart: always
+
+volumes:
+  vmagentdata: {}
+  vmdata: {}
+  grafanadata: {}
