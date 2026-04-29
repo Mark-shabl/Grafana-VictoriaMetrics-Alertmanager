@@ -1,6 +1,8 @@
-# Remote Server — Агент для передачи метрик
+# Remote Server — агент для удалённых серверов
 
-Пакет для **удалённого сервера**. Собирает метрики хоста, Docker-контейнеров и сети, отправляет на центральный VictoriaMetrics.
+Пакет нужен на **других Linux-серверах**, которые должны отправлять метрики в центральную VictoriaMetrics.
+
+На самом центральном сервере запускать `remote/` больше не обязательно: `central/` уже включает node_exporter и cAdvisor для мониторинга самого себя.
 
 ## Что входит
 
@@ -31,6 +33,10 @@ HOSTNAME=server1
 
 - **CENTRAL_URL** — IP или hostname центрального сервера, порт 8428
 - **HOSTNAME** — уникальное имя этого сервера (server1, server2, db-prod и т.п.). Нужно для разделения метрик в Grafana
+- `remote` использует отдельные локальные порты, чтобы не конфликтовать с `central`, если их случайно запустить на одной машине:
+  - node_exporter: **19100**
+  - cAdvisor: **18080**
+  - vmagent: **18429**
 
 ### Шаг 3: Запустите
 
@@ -40,9 +46,21 @@ docker compose up -d
 
 ## Проверка
 
-1. На центральном сервере откройте Grafana
-2. Explore → выполните запрос: `up{job="node_exporter"}`
-3. Должны появиться метрики с label `host` = значение HOSTNAME из .env
+На удалённом сервере:
+
+```bash
+docker compose ps
+docker compose logs vmagent --tail 50
+```
+
+В логах vmagent не должно быть `fatal`, а в central VMUI/Grafana должны появиться:
+
+- `up{job="node_exporter",host="server1"}`
+- `up{job="cadvisor",host="server1"}`
+- `node_cpu_seconds_total{host="server1"}`
+- `container_cpu_usage_seconds_total{host="server1"}`
+
+Замените `server1` на значение `HOSTNAME` из `.env`.
 
 ## Firewall
 
@@ -61,7 +79,7 @@ ufw reload
 ```
 remote/
 ├── docker-compose.yml
-├── prometheus.yml      # Скрейпинг node_exporter
+├── prometheus.yml      # Скрейпинг node_exporter и cAdvisor
 ├── .env.example
 └── README.md
 ```

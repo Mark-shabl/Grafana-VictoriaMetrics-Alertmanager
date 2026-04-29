@@ -2,6 +2,22 @@ global:
   scrape_interval: 10s
 
 scrape_configs:
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - host.docker.internal:9100
+        labels:
+          env: central
+          host: central
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - host.docker.internal:8080
+        labels:
+          env: central
+          host: central
+
   - job_name: vmagent
     static_configs:
       - targets:

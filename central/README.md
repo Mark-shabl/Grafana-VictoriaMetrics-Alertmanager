@@ -1,6 +1,11 @@
-# Central Server — Grafana + VictoriaMetrics + Alertmanager
+# Central Server — полный стек мониторинга
 
-Полный стек мониторинга: хранение метрик, визуализация, алертинг. Разворачивается на **центральном сервере**.
+Разворачивается на **центральном сервере** и сразу собирает:
+
+- метрики самого стека мониторинга: VictoriaMetrics, vmagent, vmalert;
+- метрики центрального сервера: CPU, RAM, disk, network через node_exporter;
+- метрики Docker-контейнеров центрального сервера через cAdvisor;
+- метрики удалённых серверов, если они отправляются из пакета `remote/`.
 
 ## Развёртывание
 
@@ -8,6 +13,29 @@
 cd central
 docker compose up -d
 ```
+
+После запуска откройте:
+
+- Grafana: `http://SERVER_IP:3000` (`admin` / `admin`)
+- VictoriaMetrics VMUI: `http://SERVER_IP:8428/vmui`
+
+## Быстрая проверка
+
+На центральном сервере:
+
+```bash
+bash scripts/check-monitoring.sh
+```
+
+Скрипт проверит, что VictoriaMetrics доступна и в ней есть базовые метрики:
+
+- `up`
+- `up{job="node_exporter"}`
+- `up{job="cadvisor"}`
+- `node_cpu_seconds_total`
+- `container_cpu_usage_seconds_total`
+
+Если проверка проходит, Grafana уже должна видеть метрики центрального сервера и контейнеров.
 
 ## Важно: приём метрик с удалённых серверов
 
@@ -38,25 +66,54 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | vmalert | http://localhost:8880 | — |
 | Alertmanager | http://localhost:9093 | — |
 | vmagent | http://localhost:8429 | — |
+| node_exporter | http://localhost:9100 | — |
+| cAdvisor | http://localhost:8080 | — |
+
+`vmagent` внутри Docker обращается к локальным экспортёрам через `host.docker.internal`, поэтому метрики центрального сервера собираются без отдельного запуска `remote/`.
 
 ## Дашборды
 
-Скачать предустановленные дашборды (VictoriaMetrics, vmagent, vmalert, Node Exporter, Docker):
+Используемые дашборды:
+
+| ID | Название | Для чего |
+|----|----------|----------|
+| 10229 | VictoriaMetrics | Состояние VictoriaMetrics |
+| 12683 | VictoriaMetrics - vmagent | Состояние vmagent |
+| 14950 | VictoriaMetrics - vmalert | Состояние vmalert |
+| 1860 | Node Exporter Full | CPU, RAM, disks, network хостов |
+| 24458 | Envoy / Downstream | downstream-метрики Envoy |
+| 14282 | Docker/cAdvisor | Docker-контейнеры |
+
+Скачать предустановленные дашборды на Linux-сервере:
+
+```bash
+bash scripts/download-dashboards.sh
+docker compose restart grafana
+```
+
+Или на Windows PowerShell:
 
 ```powershell
-# Windows PowerShell
 .\scripts\download-dashboards.ps1
 ```
 
-Затем перезапустить Grafana:
+Затем перезапустить Grafana, если ещё не сделали:
 
 ```bash
 docker compose restart grafana
 ```
 
+Dashboard `Envoy / Downstream` покажет данные только после появления метрик Envoy, например `envoy_http_downstream_rq_total`. Обычно их отдают Envoy admin endpoints `/stats/prometheus`; добавьте соответствующий scrape target в vmagent там, где у вас работает Envoy.
+
 ## Alertmanager
 
 По умолчанию алерты идут в `blackhole`. Для Slack, Email и др. настройте `alertmanager/alertmanager.yml`.
+
+## Частые сообщения в логах
+
+- Grafana `public-dashboards status=404` — не ошибка, Grafana проверяет публичную версию дашборда.
+- Grafana `POST /api/ds/query status=400` — обычно проблема переменной дашборда (`All`/пустое значение). Проверьте запрос в Explore.
+- VictoriaMetrics `unsupported path requested` для `/.env`, `/.git/config`, `/swagger` — внешние сканеры. Закройте порт 8428 firewall-ом для всех, кроме своих remote-серверов.
 
 ## Структура
 
@@ -68,5 +125,8 @@ central/
 ├── rules/                    # Правила алертинга
 ├── grafana/provisioning/
 ├── dashboards/
-└── scripts/download-dashboards.ps1
+└── scripts/
+    ├── download-dashboards.ps1
+    ├── download-dashboards.sh
+    └── check-monitoring.sh
 ```

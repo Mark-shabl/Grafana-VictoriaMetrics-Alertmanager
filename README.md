@@ -1,6 +1,9 @@
 # Grafana + VictoriaMetrics + Alertmanager
 
-Стек мониторинга из двух пакетов: **central** (хранение и администрирование) и **remote** (агент для передачи метрик).
+Стек мониторинга из двух пакетов:
+
+- **central** — полный стек на центральном сервере: VictoriaMetrics, Grafana, vmalert, Alertmanager, vmagent, node_exporter, cAdvisor.
+- **remote** — агент для остальных Linux-серверов: node_exporter, cAdvisor, vmagent.
 
 ## Схема
 
@@ -8,12 +11,13 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │  Центральный сервер (central/)                                  │
 │  VictoriaMetrics · Grafana · vmalert · Alertmanager · vmagent   │
-│  Хранение метрик, дашборды, алерты                              │
+│  node_exporter · cAdvisor                                       │
+│  Хранение метрик, дашборды, алерты, метрики самого central      │
 └────────────────────────────▲────────────────────────────────────┘
                              │ remote write :8428
 ┌────────────────────────────┴────────────────────────────────────┐
 │  Удалённый сервер (remote/)                                     │
-│  node_exporter + vmagent — только сбор и отправка метрик         │
+│  node_exporter · cAdvisor · vmagent — сбор и отправка метрик     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -24,16 +28,29 @@
 ```bash
 cd central
 docker compose up -d
+bash scripts/check-monitoring.sh
 ```
 
 Подробнее: [central/README.md](central/README.md)
+
+После этого Grafana уже должна показывать метрики самого центрального сервера и его Docker-контейнеров.
+
+Чтобы скачать выбранные дашборды:
+
+```bash
+cd central
+bash scripts/download-dashboards.sh
+docker compose restart grafana
+```
+
+Набор дашбордов: `1860 Node Exporter Full`, `24458 Envoy / Downstream`, существующий Docker/cAdvisor, а также VictoriaMetrics/vmagent/vmalert.
 
 ### 2. Удалённый сервер
 
 ```bash
 cd remote
 cp .env.example .env
-# Отредактируйте .env — впишите CENTRAL_URL
+# Отредактируйте .env — впишите CENTRAL_URL и HOSTNAME
 docker compose up -d
 ```
 
@@ -44,16 +61,17 @@ docker compose up -d
 | Где | Что вписать | Пример |
 |-----|-------------|--------|
 | **remote/.env** | `CENTRAL_URL` — адрес центрального сервера | `http://192.168.1.100:8428` |
+| **remote/.env** | `HOSTNAME` — имя удалённого сервера в Grafana | `db-prod-1` |
 | **Firewall центрального сервера** | Входящий TCP порт 8428 | Разрешить с IP удалённых серверов |
 | **Firewall удалённого сервера** | Исходящий доступ на central:8428 | Обычно уже разрешён |
 
 ## Как центральный сервер принимает метрики
 
-**Схема:** удалённый vmagent **отправляет** (push) метрики на центральный VictoriaMetrics. Центральный сервер ничего не «подключает» — он только **принимает** входящие запросы.
+**Схема:** central vmagent собирает метрики самого central, а удалённый vmagent **отправляет** (push) метрики других серверов на центральный VictoriaMetrics.
 
 1. **VictoriaMetrics** на central слушает порт **8428** и принимает данные на `/api/v1/write`. Дополнительная настройка не нужна.
 
-2. **Что нужно сделать на центральном сервере** — открыть порт 8428 **только для IP ваших удалённых серверов** (см. раздел «Безопасность» ниже).
+2. **На центральном сервере** — открыть порт 8428 **только для IP ваших удалённых серверов** (см. раздел «Безопасность» ниже).
 
 3. **На удалённом сервере** — в `remote/.env` указать `CENTRAL_URL=http://IP_CENTRAL:8428` и запустить `docker compose up -d`. vmagent сам начнёт отправлять метрики.
 
@@ -91,17 +109,37 @@ firewall-cmd --reload
 | Трафик сети | node_exporter | `node_network_receive_bytes_total`, `node_network_transmit_bytes_total` |
 | Docker-контейнеры | cadvisor | `container_cpu_usage_seconds_total`, `container_memory_usage_bytes` |
 | Трафик контейнеров | cadvisor | `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
+| Envoy downstream | envoy | `envoy_http_downstream_rq_total`, `envoy_http_downstream_cx_active` |
 
 **Фильтр по серверу:** добавьте `host="server1"` к запросу. Дашборды Node Exporter и Docker — создайте переменную `host` (Label = `host`).
 
 **Важно:** задайте разный `HOSTNAME` в remote/.env на каждом удалённом сервере.
 
+## Быстрая диагностика
+
+На central:
+
+```bash
+cd central
+bash scripts/check-monitoring.sh
+```
+
+Если скрипт проходит, VictoriaMetrics уже содержит базовые метрики `up`, `node_cpu_seconds_total` и `container_cpu_usage_seconds_total`.
+
+Для dashboard `Envoy / Downstream` в VictoriaMetrics должны быть метрики `envoy_*`. Если Envoy не скрейпится, этот дашборд будет пустым.
+
+В Grafana:
+
+- 404 на `/public-dashboards` в логах не мешает работе.
+- Если панель пустая, сначала проверьте Explore с простым запросом: `node_cpu_seconds_total` или `container_cpu_usage_seconds_total`.
+- Если Explore показывает данные, а дашборд нет, выберите конкретный `host`/`instance` вместо пустого значения или `All`.
+
 ## Пакеты
 
 | Пакет | Назначение |
 |-------|------------|
-| [central/](central/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager. Всё хранение и администрирование. |
-| [remote/](remote/) | Минимум: node_exporter + vmagent. Только сбор и отправка метрик на central. |
+| [central/](central/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager, метрики самого central. |
+| [remote/](remote/) | Агент для других Linux-серверов: node_exporter, cAdvisor, vmagent. |
 
 ## Требования
 
