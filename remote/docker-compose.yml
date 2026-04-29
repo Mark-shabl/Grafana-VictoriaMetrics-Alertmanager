@@ -32,5 +32,5 @@ services:
     command:
       - "--promscrape.config=/etc/prometheus/prometheus.yml"
       - "--remoteWrite.url=${CENTRAL_URL}/api/v1/write"
-      - "--remoteWrite.externalLabels=host=${HOSTNAME:-unknown}"
+      - "--remoteWrite.label=host=${HOSTNAME:-unknown}"
     restart: always
