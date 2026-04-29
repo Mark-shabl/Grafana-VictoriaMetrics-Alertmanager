@@ -5,7 +5,7 @@ scrape_configs:
   - job_name: node_exporter
     static_configs:
       - targets:
-          - host.docker.internal:9100
+          - 127.0.0.1:9100
         labels:
           env: central
           host: central
@@ -13,7 +13,7 @@ scrape_configs:
   - job_name: cadvisor
     static_configs:
       - targets:
-          - host.docker.internal:8080
+          - 127.0.0.1:8080
         labels:
           env: central
           host: central
@@ -21,12 +21,12 @@ scrape_configs:
   - job_name: vmagent
     static_configs:
       - targets:
-          - vmagent:8429
+          - 127.0.0.1:8429
   - job_name: vmalert
     static_configs:
       - targets:
-          - vmalert:8880
+          - 127.0.0.1:8880
   - job_name: victoriametrics
     static_configs:
       - targets:
-          - victoriametrics:8428
+          - 127.0.0.1:8428

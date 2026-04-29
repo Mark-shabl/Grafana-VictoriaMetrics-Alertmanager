@@ -69,7 +69,7 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | node_exporter | http://localhost:9100 | — |
 | cAdvisor | http://localhost:8080 | — |
 
-`vmagent` внутри Docker обращается к локальным экспортёрам через `host.docker.internal`, поэтому метрики центрального сервера собираются без отдельного запуска `remote/`.
+`vmagent`, `node_exporter` и cAdvisor в central используют host network, поэтому локальные метрики собираются через `127.0.0.1` без отдельного запуска `remote/`.
 
 ## Дашборды
 

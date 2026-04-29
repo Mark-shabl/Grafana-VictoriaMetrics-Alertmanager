@@ -27,16 +27,13 @@ services:
       - node_exporter
       - cadvisor
       - victoriametrics
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - 8429:8429
+    network_mode: host
     volumes:
       - vmagentdata:/vmagentdata
       - ./vmagent/prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      - "--remoteWrite.url=http://127.0.0.1:8428/api/v1/write"
     restart: always
 
   victoriametrics:
@@ -92,7 +89,7 @@ services:
     command:
       - "--datasource.url=http://victoriametrics:8428/"
       - "--remoteRead.url=http://victoriametrics:8428/"
-      - "--remoteWrite.url=http://vmagent:8429/"
+      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
       - "--notifier.url=http://alertmanager:9093/"
       - "--rule=/etc/alerts/*.yml"
       - "--external.url=http://127.0.0.1:3000"
