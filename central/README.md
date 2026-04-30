@@ -5,12 +5,12 @@
 - метрики самого стека мониторинга: VictoriaMetrics, vmagent, vmalert;
 - метрики центрального сервера: CPU, RAM, disk, network через node_exporter;
 - метрики Docker-контейнеров центрального сервера через cAdvisor;
-- метрики MikroTik / RouterOS: **SNMP** (snmp_exporter) и **API** (MKTXP для CRS326 и др.);
+- метрики MikroTik / RouterOS: **SNMP** (snmp_exporter) и **API** (MKTXP, профиль **`full`** по умолчанию);
 - метрики удалённых серверов, если они отправляются из пакета `remote/`.
 
 ## Развёртывание
 
-Файл **`.env`** в каталоге `central/` задаёт секреты для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`) и учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`; см. пример переменных в `.env.example`). Скопируйте `.env.example` → `.env` и заполните значения.
+Файл **`.env`** в каталоге `central/` задаёт секреты для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`) и учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`; опционально `MKTXP_PROFILE`, `MKTXP_POE` — см. `.env.example`). Скопируйте `.env.example` → `.env` и заполните значения.
 
 ```bash
 cd central
@@ -121,13 +121,18 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 
 Проверка с центра: Explore / VMUI — `up{job="snmp_mikrotik"} == 1`, `up{job="snmp_if_mib"} == 1`, затем **`ifHCInOctets{job="snmp_if_mib"}`** (трафик по интерфейсам задаёт модуль **`if_mib`**, модуль **`mikrotik`** даёт **`mtxr*`** без `ifHCInOctets`). **instance** на дашборде — IP из `targets`.
 
-### MKTXP (RouterOS API, коммутатор CRS326)
+### MKTXP (RouterOS API)
 
 Конфиг в контейнере пишется в **`/etc/mktxp`**; старт идёт как пользователь **`mktxp`** с **`mktxp --cfg-dir /etc/mktxp export`** (иначе MKTXP ищет `~/mktxp` и подставляет шаблон **Sample-Router**).
 
-Сервис **mktxp** в `central/docker-compose.yml` при старте собирает `mktxp.conf` из переменных **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST` (по умолчанию `192.168.88.1`), `MKTXP_ROUTER_SECTION` (имя секции конфига, по умолчанию `CRS326`), **`MKTXP_POE=True`** если на устройстве есть PoE и нужны соответствующие метрики (по умолчанию **выкл.**, чтобы не было ошибки `no such command prefix` на коммутаторах без PoE в API).
+Переменная **`MKTXP_PROFILE`** задаёт объём собираемых метрик:
 
-Профиль включён под **CRS** с **`switch_port = True`**, Wi‑Fi/CAPsMAN отключены по умолчанию.
+- **`full`** (значение по умолчанию) — включаются **все** коллекторы из шаблона MKTXP, в том числе DHCP и leases, IPv6, туннели (EoIP/GRE/IP-IP/IPsec), BGP/BFD/routing-stats, контейнеры, Kid Control, W60G, CAPsMAN, Wi‑Fi, **`switch_port`**, **`check_for_updates`**. Если на устройстве **нет PoE** в API, в **`.env`** задайте **`MKTXP_POE=False`**, чтобы убрать ошибки вида `no such command prefix` по PoE.
+- **`crs`**, **`minimal`**, **`switch`** — прежний «лёгкий» профиль под коммутатор: Wi‑Fi/CAPsMAN и лишнее выключены, **`MKTXP_DHCP`**, **`MKTXP_DHCP_LEASE`**, **`MKTXP_POE`** читаются из `.env` (по умолчанию выкл., кроме `switch_port`).
+
+Остальное в **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST`, `MKTXP_ROUTER_SECTION` и т.д. — см. **`.env.example`**.
+
+LTE-метрики в документации MikroTik для старых ROS иногда требуют доп. политики **`test`** у пользователя API; если в логах будут ошибки по LTE — добавьте политику группе или отключите профиль **`crs`** на устройствах без соответствующих сервисов (для **`full`** это уже «собираем всё возможное» через MKTXP; отдельные неудачные API-вызовы смотрите в **`docker compose logs mktxp`**).
 
 На устройстве RouterOS 7:
 

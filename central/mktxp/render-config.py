@@ -2,7 +2,7 @@
 """Generate /etc/mktxp/mktxp.conf and credentials.yml from environment (credentials never in INI).
 
 Required: MIKROTIK_API_USER, MIKROTIK_API_PASSWORD.
-Optional: see central/.env.example
+Optional: see central/.env.example — MKTXP_PROFILE=full (default) or crs / minimal / switch.
 """
 from __future__ import annotations
 
@@ -14,16 +14,22 @@ import yaml
 CRED_PATH = Path("/etc/mktxp/credentials.yml")
 CFG_PATH = Path("/etc/mktxp/mktxp.conf")
 
+
+def env_bool(var: str, default: bool) -> bool:
+    raw = os.environ.get(var)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 host = os.environ.get("MIKROTIK_API_HOST", "192.168.88.1").strip()
 port = int(os.environ.get("MIKROTIK_API_PORT", "8728"))
-use_ssl_raw = os.environ.get("MKTXP_USE_SSL", "False").strip().lower()
-use_ssl = use_ssl_raw in ("1", "true", "yes", "on")
-plaintext_login_raw = os.environ.get("MKTXP_PLAINTEXT_LOGIN", "True").strip().lower()
-plaintext_login = plaintext_login_raw in ("1", "true", "yes", "on")
+use_ssl = env_bool("MKTXP_USE_SSL", False)
+plaintext_login = env_bool("MKTXP_PLAINTEXT_LOGIN", True)
 router_section = os.environ.get("MKTXP_ROUTER_SECTION", "CRS326").strip() or "CRS326"
 
-poe_raw = os.environ.get("MKTXP_POE", "False").strip().lower()
-poe_enabled = poe_raw in ("1", "true", "yes", "on")
+profile = os.environ.get("MKTXP_PROFILE", "full").strip().lower()
+crs_like = profile in ("crs", "minimal", "switch", "light")
 
 user = os.environ.get("MIKROTIK_API_USER", "").strip()
 password = os.environ.get("MIKROTIK_API_PASSWORD")
@@ -43,7 +49,40 @@ CRED_PATH.write_text(
 )
 CRED_PATH.chmod(0o600)
 
-# CRS326-oriented defaults: bridge/switch ports, no Wi‑Fi/CAPsMAN by default.
+if crs_like:
+    poe = env_bool("MKTXP_POE", False)
+    dhcp = env_bool("MKTXP_DHCP", False)
+    dhcp_lease = env_bool("MKTXP_DHCP_LEASE", False)
+    installed_packages = False
+    connection_stats = False
+    dns = False
+    ipv6_route = ipv6_pool = ipv6_firewall = ipv6_neighbor = False
+    wireless = wireless_clients = False
+    capsman = capsman_clients = False
+    w60g = False
+    eoip = gre = ipip = lte = ipsec = False
+    switch_port = True
+    kid_assigned = kid_dynamic = False
+    bfd = bgp = routing_stats = certificate = container = False
+    check_updates = False
+else:
+    # full: апстрим-шаблон + все коллекторы, которые там по умолчанию выключены
+    poe = env_bool("MKTXP_POE", True)
+    dhcp = True
+    dhcp_lease = True
+    installed_packages = True
+    connection_stats = True
+    dns = True
+    ipv6_route = ipv6_pool = ipv6_firewall = ipv6_neighbor = True
+    wireless = wireless_clients = True
+    capsman = capsman_clients = True
+    w60g = True
+    eoip = gre = ipip = lte = ipsec = True
+    switch_port = True
+    kid_assigned = kid_dynamic = True
+    bfd = bgp = routing_stats = certificate = container = True
+    check_updates = True
+
 ini = f"""[{router_section}]
     hostname = {host}
     port = {port}
@@ -67,12 +106,12 @@ ini = f"""[{router_section}]
     plaintext_login = {plaintext_login}
 
     health = True
-    installed_packages = False
-    dhcp = False
-    dhcp_lease = False
+    installed_packages = {installed_packages}
+    dhcp = {dhcp}
+    dhcp_lease = {dhcp_lease}
 
     connections = True
-    connection_stats = False
+    connection_stats = {connection_stats}
 
     interface = True
 
@@ -81,49 +120,49 @@ ini = f"""[{router_section}]
     firewall = True
     neighbor = True
     address_list = None
-    dns = False
+    dns = {dns}
 
-    ipv6_route = False
-    ipv6_pool = False
-    ipv6_firewall = False
-    ipv6_neighbor = False
+    ipv6_route = {ipv6_route}
+    ipv6_pool = {ipv6_pool}
+    ipv6_firewall = {ipv6_firewall}
+    ipv6_neighbor = {ipv6_neighbor}
     ipv6_address_list = None
 
-    poe = {poe_enabled}
+    poe = {poe}
     monitor = True
     netwatch = True
     public_ip = True
-    wireless = False
-    wireless_clients = False
-    capsman = False
-    capsman_clients = False
-    w60g = False
+    wireless = {wireless}
+    wireless_clients = {wireless_clients}
+    capsman = {capsman}
+    capsman_clients = {capsman_clients}
+    w60g = {w60g}
 
-    eoip = False
-    gre = False
-    ipip = False
-    lte = False
-    ipsec = False
-    switch_port = True
+    eoip = {eoip}
+    gre = {gre}
+    ipip = {ipip}
+    lte = {lte}
+    ipsec = {ipsec}
+    switch_port = {switch_port}
 
-    kid_control_assigned = False
-    kid_control_dynamic = False
+    kid_control_assigned = {kid_assigned}
+    kid_control_dynamic = {kid_dynamic}
 
     user = True
     queue = True
 
-    bfd = False
-    bgp = False
-    routing_stats = False
-    certificate = False
+    bfd = {bfd}
+    bgp = {bgp}
+    routing_stats = {routing_stats}
+    certificate = {certificate}
 
-    container = False
+    container = {container}
 
     remote_dhcp_entry = None
     remote_capsman_entry = None
 
     interface_name_format = name
-    check_for_updates = False
+    check_for_updates = {check_updates}
 """
 
 CFG_PATH.write_text(ini, encoding="utf-8")
