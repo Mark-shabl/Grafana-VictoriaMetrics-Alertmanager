@@ -12,7 +12,7 @@
 | **cAdvisor** | Docker-контейнеры: CPU, память, трафик на каждый контейнер |
 | **vmagent** | Скрейпит оба экспортера и отправляет на central |
 
-Все метрики помечены label `host` — в Grafana можно фильтровать по серверу.
+Все метрики с remote помечены лейблом **`host`** (значение **`REMOTE_NAME`** из `.env`).
 
 ## Как связать с центральным сервером
 
@@ -22,17 +22,19 @@
 cp .env.example .env
 ```
 
+Раньше использовали **`HOSTNAME`** в `.env`: переименуйте в **`REMOTE_NAME=...`**, иначе конфликтует с переменной **`HOSTNAME`** в shell на Linux при `docker compose up`.
+
 ### Шаг 2: Впишите настройки
 
 Откройте `.env` и укажите:
 
 ```
 CENTRAL_URL=http://192.168.1.100:8428
-HOSTNAME=server1
+REMOTE_NAME=server1
 ```
 
-- **CENTRAL_URL** — только базовый адрес VictoriaMetrics (`http://IP:8428`), **без** суффикса `/api/v1/write` (его подставляет `docker-compose.yml` у vmagent)
-- **HOSTNAME** — уникальное имя этого сервера (server1, server2, db-prod и т.п.). Нужно для разделения метрик в Grafana
+- **`CENTRAL_URL`** — только базовый адрес VictoriaMetrics (`http://IP:8428`), **без** `/api/v1/write` (путь добавляет `docker-compose.yml` у vmagent).
+- **`REMOTE_NAME`** — уникальное имя этого сервера (**одно место правки**). Из него vmagent ставит лейбл **`host`** при отправке на central и **`instance`** в scrape-конфиге из шаблона `prometheus.yml.template`, чтобы дашборд **Node Exporter Full** корректно различал remote по переменной **Instance**. Раньше в примерах использовалась переменная **`HOSTNAME`**, её переименовали на **`REMOTE_NAME`**, чтобы значение случайной shell-переменной `HOSTNAME` на Linux не подменяло подстановку в `docker compose`.
 - `remote` использует отдельные локальные порты, чтобы не конфликтовать с `central`, если их случайно запустить на одной машине:
   - node_exporter: **19100**
   - cAdvisor: **18080**
@@ -60,7 +62,7 @@ docker compose logs vmagent --tail 50
 - `node_cpu_seconds_total{host="server1"}`
 - `container_cpu_usage_seconds_total{host="server1"}`
 
-Замените `server1` на значение `HOSTNAME` из `.env`.
+Замените `server1` на значение **`REMOTE_NAME`** из `.env`.
 
 ## Firewall
 
@@ -79,7 +81,7 @@ ufw reload
 ```
 remote/
 ├── docker-compose.yml
-├── prometheus.yml      # Скрейпинг node_exporter и cAdvisor
+├── prometheus.yml.template   # шаблон; __REMOTE_NAME__ подставляется из REMOTE_NAME в .env при старте vmagent
 ├── .env.example
 └── README.md
 ```

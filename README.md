@@ -50,7 +50,7 @@ docker compose restart grafana
 ```bash
 cd remote
 cp .env.example .env
-# Отредактируйте .env — впишите CENTRAL_URL и HOSTNAME
+# Отредактируйте .env — впишите CENTRAL_URL и REMOTE_NAME
 docker compose up -d
 ```
 
@@ -61,7 +61,7 @@ docker compose up -d
 | Где | Что вписать | Пример |
 |-----|-------------|--------|
 | **remote/.env** | `CENTRAL_URL` — адрес центрального сервера | `http://192.168.1.100:8428` |
-| **remote/.env** | `HOSTNAME` — имя удалённого сервера в Grafana | `db-prod-1` |
+| **remote/.env** | `REMOTE_NAME` — имя сервера в Grafana, лейбл `host` и `instance` для scrape | `db-prod-1` |
 | **Firewall центрального сервера** | Входящий TCP порт 8428 | Разрешить с IP удалённых серверов |
 | **Firewall удалённого сервера** | Исходящий доступ на central:8428 | Обычно уже разрешён |
 
@@ -152,7 +152,7 @@ sudo firewall-cmd --reload
 
 **Фильтр по серверу:** добавьте `host="server1"` к запросу. Дашборды Node Exporter и Docker — создайте переменную `host` (Label = `host`).
 
-**Важно:** задайте разный `HOSTNAME` в remote/.env на каждом удалённом сервере.
+**Важно:** на каждом удалённом сервере задаётте свой **`REMOTE_NAME`** в `remote/.env` (разные машины не должны совпадать).
 
 ## Быстрая диагностика
 

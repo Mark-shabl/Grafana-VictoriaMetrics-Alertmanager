@@ -31,10 +31,20 @@ services:
       - node_exporter
       - cadvisor
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml.template:/etc/prometheus/prometheus.template.yml:ro
+    env_file:
+      - .env
+    environment:
+      REMOTE_NAME: ${REMOTE_NAME:?set REMOTE_NAME in .env}
+      CENTRAL_URL: ${CENTRAL_URL:?set CENTRAL_URL in .env}
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--httpListenAddr=:18429"
-      - "--remoteWrite.url=${CENTRAL_URL:?set CENTRAL_URL in .env}/api/v1/write"
-      - "--remoteWrite.label=host=${HOSTNAME:-unknown}"
+      - |
+        set -eu
+        sed "s#__REMOTE_NAME__#$${REMOTE_NAME}#g" /etc/prometheus/prometheus.template.yml > /tmp/prometheus.yml
+        exec /vmagent-prod \
+          -promscrape.config=/tmp/prometheus.yml \
+          -httpListenAddr=:18429 \
+          -remoteWrite.url=$${CENTRAL_URL}/api/v1/write \
+          -remoteWrite.label=host=$${REMOTE_NAME}
     restart: always

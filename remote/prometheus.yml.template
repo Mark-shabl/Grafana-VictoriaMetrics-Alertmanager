@@ -8,6 +8,8 @@ scrape_configs:
           - 127.0.0.1:19100
         labels:
           env: remote
+          # Из REMOTE_NAME в .env (подстановка при старте vmagent — см. docker-compose.yml)
+          instance: __REMOTE_NAME__
 
   - job_name: cadvisor
     static_configs:
@@ -15,3 +17,4 @@ scrape_configs:
           - 127.0.0.1:18080
         labels:
           env: remote
+          instance: __REMOTE_NAME__
