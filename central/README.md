@@ -81,7 +81,7 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | 12683 | VictoriaMetrics - vmagent | Состояние vmagent |
 | 14950 | VictoriaMetrics - vmalert | Состояние vmalert |
 | 1860 | Node Exporter Full | CPU, RAM, disks, network хостов |
-| 24458 | Envoy / Downstream | downstream-метрики Envoy |
+| 14857 | MikroTik | Интерфейсы, трафик и состояние RouterOS через SNMP |
 | 14282 | Docker/cAdvisor | Docker-контейнеры |
 
 Скачать предустановленные дашборды на Linux-сервере:
@@ -103,7 +103,18 @@ docker compose restart grafana
 docker compose restart grafana
 ```
 
-Dashboard `Envoy / Downstream` покажет данные только после появления метрик Envoy, например `envoy_http_downstream_rq_total`. Обычно их отдают Envoy admin endpoints `/stats/prometheus`; добавьте соответствующий scrape target в vmagent там, где у вас работает Envoy.
+Dashboard `MikroTik` покажет данные только после настройки SNMP на RouterOS и `snmp_exporter` в стеке мониторинга. Сам dashboard не опрашивает роутер напрямую; метрики должны попасть в VictoriaMetrics через vmagent.
+
+Если `Node Exporter Full` или Docker/cAdvisor показывают `No data`, сначала проверьте:
+
+```promql
+up{job="node_exporter"} == 1
+up{job="cadvisor"} == 1
+node_uname_info
+container_cpu_usage_seconds_total
+```
+
+Если эти запросы дают данные в Grafana Explore, перекачайте дашборды скриптом выше: он берёт актуальные ревизии с grafana.com.
 
 ## Alertmanager
 

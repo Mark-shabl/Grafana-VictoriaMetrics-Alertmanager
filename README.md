@@ -43,7 +43,7 @@ bash scripts/download-dashboards.sh
 docker compose restart grafana
 ```
 
-Набор дашбордов: `1860 Node Exporter Full`, `24458 Envoy / Downstream`, существующий Docker/cAdvisor, а также VictoriaMetrics/vmagent/vmalert.
+Набор дашбордов: `1860 Node Exporter Full`, `14857 MikroTik`, существующий Docker/cAdvisor, а также VictoriaMetrics/vmagent/vmalert.
 
 ### 2. Удалённый сервер
 
@@ -109,7 +109,7 @@ firewall-cmd --reload
 | Трафик сети | node_exporter | `node_network_receive_bytes_total`, `node_network_transmit_bytes_total` |
 | Docker-контейнеры | cadvisor | `container_cpu_usage_seconds_total`, `container_memory_usage_bytes` |
 | Трафик контейнеров | cadvisor | `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
-| Envoy downstream | envoy | `envoy_http_downstream_rq_total`, `envoy_http_downstream_cx_active` |
+| MikroTik / RouterOS | snmp_exporter | interface traffic, packets, errors, CPU, memory |
 
 **Фильтр по серверу:** добавьте `host="server1"` к запросу. Дашборды Node Exporter и Docker — создайте переменную `host` (Label = `host`).
 
@@ -126,7 +126,7 @@ bash scripts/check-monitoring.sh
 
 Если скрипт проходит, VictoriaMetrics уже содержит базовые метрики `up`, `node_cpu_seconds_total` и `container_cpu_usage_seconds_total`.
 
-Для dashboard `Envoy / Downstream` в VictoriaMetrics должны быть метрики `envoy_*`. Если Envoy не скрейпится, этот дашборд будет пустым.
+Для dashboard `MikroTik` в VictoriaMetrics должны быть метрики от `snmp_exporter`. Если MikroTik ещё не скрейпится по SNMP, этот дашборд будет пустым.
 
 В Grafana:
 
