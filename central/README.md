@@ -125,6 +125,7 @@ container_cpu_usage_seconds_total
 - Grafana `public-dashboards status=404` — не ошибка, Grafana проверяет публичную версию дашборда.
 - Grafana `POST /api/ds/query status=400` — обычно проблема переменной дашборда (`All`/пустое значение). Проверьте запрос в Explore.
 - VictoriaMetrics `unsupported path requested` для `/.env`, `/.git/config`, `/swagger` — внешние сканеры. Закройте порт 8428 firewall-ом для всех, кроме своих remote-серверов.
+- VictoriaMetrics `unsupported path requested` для `"/api/v1/write/api/v1/write"` — путь `/api/v1/write` указали дважды. У **remote** в `.env` в `CENTRAL_URL` должно быть только `http://хост:8428` (без `/api/v1/write`). У **vmalert** в `central/docker-compose.yml` флаг `-remoteWrite.url` должен быть без суффикса `/api/v1/write` — vmalert дописывает его сам; в актуальном репозитории это уже так. После правки: `docker compose up -d` на central.
 
 ## Структура
 

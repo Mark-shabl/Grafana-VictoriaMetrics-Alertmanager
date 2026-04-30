@@ -31,7 +31,7 @@ CENTRAL_URL=http://192.168.1.100:8428
 HOSTNAME=server1
 ```
 
-- **CENTRAL_URL** — IP или hostname центрального сервера, порт 8428
+- **CENTRAL_URL** — только базовый адрес VictoriaMetrics (`http://IP:8428`), **без** суффикса `/api/v1/write` (его подставляет `docker-compose.yml` у vmagent)
 - **HOSTNAME** — уникальное имя этого сервера (server1, server2, db-prod и т.п.). Нужно для разделения метрик в Grafana
 - `remote` использует отдельные локальные порты, чтобы не конфликтовать с `central`, если их случайно запустить на одной машине:
   - node_exporter: **19100**

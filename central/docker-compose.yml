@@ -89,7 +89,8 @@ services:
     command:
       - "--datasource.url=http://victoriametrics:8428/"
       - "--remoteRead.url=http://victoriametrics:8428/"
-      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      # vmalert сам добавляет /api/v1/write; полный путь здесь даёт …/write/api/v1/write в логах VM
+      - "--remoteWrite.url=http://victoriametrics:8428"
       - "--notifier.url=http://alertmanager:9093/"
       - "--rule=/etc/alerts/*.yml"
       - "--external.url=http://127.0.0.1:3000"
