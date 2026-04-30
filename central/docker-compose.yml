@@ -21,9 +21,22 @@ services:
       - /dev/disk/:/dev/disk:ro
     privileged: true
 
+  # SNMP → Prometheus для RouterOS/MikroTik (dashboard 14857); community из .env (см. .env.example).
+  snmp_exporter:
+    image: prom/snmp-exporter:v0.29.0
+    ports:
+      - "127.0.0.1:9116:9116"
+    environment:
+      SNMP_COMMUNITY: ${MIKROTIK_SNMP_COMMUNITY:-public}
+    volumes:
+      - ./snmp_exporter/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: always
+
   vmagent:
     image: victoriametrics/vmagent:v1.137.0
     depends_on:
+      - snmp_exporter
       - node_exporter
       - cadvisor
       - victoriametrics

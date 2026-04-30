@@ -9,8 +9,11 @@
 
 ## Развёртывание
 
+Файл **`.env`** в каталоге `central/` задаёт секрет SNMP для MikroTik (переменная `MIKROTIK_SNMP_COMMUNITY`). Скопируйте `.env.example` → `.env` и пропишите community, как на роутере.
+
 ```bash
 cd central
+cp -n .env.example .env   # если .env ещё нет; затем отредактируйте MIKROTIK_SNMP_COMMUNITY
 docker compose up -d
 ```
 
@@ -68,6 +71,7 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | vmagent | http://localhost:8429 | — |
 | node_exporter | http://localhost:9100 | — |
 | cAdvisor | http://localhost:8080 | — |
+| snmp_exporter | http://127.0.0.1:9116 | только локально |
 
 `vmagent`, `node_exporter` и cAdvisor в central используют host network, поэтому локальные метрики собираются через `127.0.0.1` без отдельного запуска `remote/`.
 
@@ -103,7 +107,16 @@ docker compose restart grafana
 docker compose restart grafana
 ```
 
-Dashboard `MikroTik` покажет данные только после настройки SNMP на RouterOS и `snmp_exporter` в стеке мониторинга. Сам dashboard не опрашивает роутер напрямую; метрики должны попасть в VictoriaMetrics через vmagent.
+Dashboard **MikroTik** читает метрики, которые уже в VictoriaMetrics (**snmp_exporter** опрашивает роутер, **vmagent** скрейпит exporter на `127.0.0.1:9116`).
+
+1. На MikroTik: SNMP вкл., community только для центра, файрвол **UDP/161**.
+2. В `central/.env`: `MIKROTIK_SNMP_COMMUNITY=<вашcommunity>`.
+3. В `central/vmagent/prometheus.yml` в job `snmp_mikrotik` укажите IP роутера в `targets:` (по умолчанию пример **192.168.88.1**).
+4. `docker compose up -d snmp_exporter vmagent`.
+
+Проверка с центра: Explore / VMUI, запрос `up{job="snmp_mikrotik"} == 1` и `ifHCInOctets{job="snmp_mikrotik"}`. Имя **instance** в дашборде должно совпасть с IP из `targets`.
+
+**Без роутера MikroTik:** удалите блок `job_name: snmp_mikrotik` из `vmagent/prometheus.yml` и сервис `snmp_exporter` из `docker-compose.yml`, чтобы не было ошибок scrape.
 
 Если `Node Exporter Full` или Docker/cAdvisor показывают `No data`, сначала проверьте:
 
