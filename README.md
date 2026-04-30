@@ -2,7 +2,7 @@
 
 Стек мониторинга из двух пакетов:
 
-- **central** — полный стек на центральном сервере: VictoriaMetrics, Grafana, vmalert, Alertmanager, vmagent, node_exporter, cAdvisor.
+- **central** — полный стек на центральном сервере: VictoriaMetrics, Grafana, vmalert, Alertmanager, vmagent, node_exporter, cAdvisor, **snmp_exporter** и **MKTXP** (метрики MikroTik по SNMP и по RouterOS API).
 - **remote** — агент для остальных Linux-серверов: node_exporter, cAdvisor, vmagent.
 
 ## Схема
@@ -11,7 +11,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │  Центральный сервер (central/)                                  │
 │  VictoriaMetrics · Grafana · vmalert · Alertmanager · vmagent   │
-│  node_exporter · cAdvisor                                       │
+│  node_exporter · cAdvisor · snmp_exporter · MKTXP (MikroTik)    │
 │  Хранение метрик, дашборды, алерты, метрики самого central      │
 └────────────────────────────▲────────────────────────────────────┘
                              │ remote write :8428
@@ -27,11 +27,13 @@
 
 ```bash
 cd central
+cp -n .env.example .env   # при использовании MikroTik: MIKROTIK_* — см. central/README.md
+docker compose pull
 docker compose up -d
 bash scripts/check-monitoring.sh
 ```
 
-Подробнее: [central/README.md](central/README.md)
+Подробнее (SNMP, MKTXP, дашборды, firewall): [central/README.md](central/README.md)
 
 После этого Grafana уже должна показывать метрики самого центрального сервера и его Docker-контейнеров.
 
@@ -43,7 +45,7 @@ bash scripts/download-dashboards.sh
 docker compose restart grafana
 ```
 
-Набор дашбордов: `1860 Node Exporter Full`, `14857 MikroTik`, существующий Docker/cAdvisor, а также VictoriaMetrics/vmagent/vmalert.
+Набор дашбордов: `1860 Node Exporter Full`, `14857 MikroTik` (SNMP), `13679 MikroTik MKTXP` (API), Docker/cAdvisor, VictoriaMetrics/vmagent/vmalert.
 
 ### 2. Удалённый сервер
 
@@ -148,7 +150,8 @@ sudo firewall-cmd --reload
 | Трафик сети | node_exporter | `node_network_receive_bytes_total`, `node_network_transmit_bytes_total` |
 | Docker-контейнеры | cadvisor | `container_cpu_usage_seconds_total`, `container_memory_usage_bytes` |
 | Трафик контейнеров | cadvisor | `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
-| MikroTik / RouterOS | snmp_exporter | interface traffic, packets, errors, CPU, memory |
+| MikroTik / RouterOS (SNMP) | snmp_exporter | трафик интерфейсов, `if_mib` / `mikrotik`, MTXR |
+| MikroTik / RouterOS (API) | mktxp | MKTXP: health, DHCP, switch port, маршруты и др. (см. профиль в `central/`) |
 
 **Фильтр по серверу:** добавьте `host="server1"` к запросу. Дашборды Node Exporter и Docker — создайте переменную `host` (Label = `host`).
 
@@ -165,7 +168,7 @@ bash scripts/check-monitoring.sh
 
 Если скрипт проходит, VictoriaMetrics уже содержит базовые метрики `up`, `node_cpu_seconds_total` и `container_cpu_usage_seconds_total`.
 
-Для dashboard `MikroTik` в VictoriaMetrics должны быть метрики от `snmp_exporter`. Если MikroTik ещё не скрейпится по SNMP, этот дашборд будет пустым.
+Для дашборда **MikroTik** (SNMP) в VictoriaMetrics нужны метрики от `snmp_exporter` (job `snmp_mikrotik` / `snmp_if_mib`). Для дашборда **MikroTik MKTXP** — скрейп **MKTXP** (`job="mktxp"`). Подробности и профили MKTXP: [central/README.md](central/README.md).
 
 В Grafana:
 
@@ -177,7 +180,7 @@ bash scripts/check-monitoring.sh
 
 | Пакет | Назначение |
 |-------|------------|
-| [central/](central/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager, метрики самого central. |
+| [central/](central/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager, метрики central, SNMP и MKTXP для MikroTik. |
 | [remote/](remote/) | Агент для других Linux-серверов: node_exporter, cAdvisor, vmagent. |
 
 ## Требования

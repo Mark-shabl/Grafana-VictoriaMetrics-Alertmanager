@@ -10,13 +10,16 @@
 
 ## Развёртывание
 
-Файл **`.env`** в каталоге `central/` задаёт секреты для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`) и учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`; опционально `MKTXP_PROFILE`, `MKTXP_POE` — см. `.env.example`). Скопируйте `.env.example` → `.env` и заполните значения.
+Файл **`.env`** в каталоге `central/` задаёт секреты и опции для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`), учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`), профиль **`MKTXP_PROFILE`** и при необходимости **`MKTXP_POE`**, **`MKTXP_W60G`**, **`MKTXP_DHCP`** / **`MKTXP_DHCP_LEASE`** (для профиля `crs`) — полный список см. **`.env.example`**. Скопируйте `.env.example` → `.env` и заполните значения.
 
 ```bash
 cd central
-cp -n .env.example .env   # затем MIKROTIK_SNMP_COMMUNITY и MIKROTIK_API_*
+cp -n .env.example .env   # затем MIKROTIK_SNMP_COMMUNITY, MIKROTIK_API_*, при необходимости MKTXP_*
+docker compose pull        # при обновлении репозитория — подтянуть образы
 docker compose up -d
 ```
+
+Если пользователь не в группе **`docker`**, используйте **`sudo docker compose …`**. После смены **`render-config.py`**, **`.env`** (MKTXP) или **`MKTXP_PROFILE`** пересоздайте экспортёр: **`docker compose up -d mktxp --force-recreate`**.
 
 После запуска откройте:
 
@@ -38,6 +41,7 @@ bash scripts/check-monitoring.sh
 - `up{job="cadvisor"}`
 - `node_cpu_seconds_total`
 - `container_cpu_usage_seconds_total`
+- наличие скрейпа MKTXP: `process_virtual_memory_bytes{job="mktxp"}` (см. `scripts/check-monitoring.sh`)
 
 Если проверка проходит, Grafana уже должна видеть метрики центрального сервера и контейнеров.
 
@@ -76,6 +80,8 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | MKTXP | http://127.0.0.1:49090/metrics | только локально |
 
 `vmagent`, `node_exporter` и cAdvisor в central используют host network, поэтому локальные метрики собираются через `127.0.0.1` без отдельного запуска `remote/`.
+
+**MKTXP и snmp_exporter** публикуют HTTP только на **127.0.0.1** центрального хоста; до **MikroTik** с этого хоста должны быть открыты **UDP/161** (SNMP) и **TCP/8728** (или порт API-SSL при `MKTXP_USE_SSL`), см. раздел MKTXP ниже.
 
 ## Дашборды
 
@@ -123,34 +129,40 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 
 ### MKTXP (RouterOS API)
 
-Конфиг в контейнере пишется в **`/etc/mktxp`**; старт идёт как пользователь **`mktxp`** с **`mktxp --cfg-dir /etc/mktxp export`** (иначе MKTXP ищет `~/mktxp` и подставляет шаблон **Sample-Router**).
+Конфиг в контейнере пишется в **`/etc/mktxp`**; процесс запускается как пользователь **`mktxp`** с **`mktxp --cfg-dir /etc/mktxp export`**. Без **`--cfg-dir`** MKTXP читает конфиг из **`~/mktxp`** внутри образа и подставляет шаблон **Sample-Router** вместо вашего устройства (**`CRS326`** и т.д.).
 
-Переменная **`MKTXP_PROFILE`** задаёт объём собираемых метрик:
+Переменная **`MKTXP_PROFILE`** задаёт объём метрик:
 
-- **`full`** (значение по умолчанию) — включаются **все** коллекторы из шаблона MKTXP, в том числе DHCP и leases, IPv6, туннели (EoIP/GRE/IP-IP/IPsec), BGP/BFD/routing-stats, контейнеры, Kid Control, W60G, CAPsMAN, Wi‑Fi, **`switch_port`**, **`check_for_updates`**. Если на устройстве **нет PoE** в API, в **`.env`** задайте **`MKTXP_POE=False`**, чтобы убрать ошибки вида `no such command prefix` по PoE.
-- **`crs`**, **`minimal`**, **`switch`** — прежний «лёгкий» профиль под коммутатор: Wi‑Fi/CAPsMAN и лишнее выключены, **`MKTXP_DHCP`**, **`MKTXP_DHCP_LEASE`**, **`MKTXP_POE`** читаются из `.env` (по умолчанию выкл., кроме `switch_port`).
+- **`full`** (по умолчанию в `docker-compose`) — максимум коллекторов MKTXP: DHCP и leases, IPv6, DNS, туннели, BGP/BFD, Kid Control, контейнеры RouterOS, **`switch_port`**, **`check_for_updates`** и др. Коллекторы **`poe`** и **`w60g`** по умолчанию **выключены**: на CRS без PoE/W60G в API MKTXP будет сыпать **`no such command prefix`**. Включите только при наличии железа: **`MKTXP_POE=True`**, **`MKTXP_W60G=True`** в **`.env`**.
+- **`crs`**, **`minimal`**, **`switch`** — урезанный профиль для коммутатора: Wi‑Fi/CAPsMAN и «тяжёлое» выключены; **`MKTXP_DHCP`**, **`MKTXP_DHCP_LEASE`**, **`MKTXP_POE`** задаются в **`.env`** (по умолчанию выкл.), **`switch_port`** остаётся включённым.
 
-Остальное в **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST`, `MKTXP_ROUTER_SECTION` и т.д. — см. **`.env.example`**.
+| Переменная | Назначение |
+|------------|------------|
+| `MKTXP_PROFILE` | **`full`** (по умолчанию) или **`crs`** / **`minimal`** / **`switch`** — см. список выше. |
+| `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD` | Учётка RouterOS с политикой **`api`**, **`read`** (обязательно). |
+| `MIKROTIK_API_HOST`, `MIKROTIK_API_PORT` | Цель API (часто **`192.168.88.1`**, порт **8728**). |
+| `MKTXP_ROUTER_SECTION` | Имя секции в конфиге MKTXP (отображается в логах/лейблах), например **`CRS326`**. |
+| `MKTXP_USE_SSL`, `MKTXP_PLAINTEXT_LOGIN` | TLS и режим логина (см. MKTXP README / RouterOS). |
+| `MKTXP_POE`, `MKTXP_W60G` | При **`True`** — сбор PoE / W60g (если API есть на устройстве). В **`crs`** отдельно задайте **`MKTXP_DHCP`**, **`MKTXP_DHCP_LEASE`**. |
 
-LTE-метрики в документации MikroTik для старых ROS иногда требуют доп. политики **`test`** у пользователя API; если в логах будут ошибки по LTE — добавьте политику группе или отключите профиль **`crs`** на устройствах без соответствующих сервисов (для **`full`** это уже «собираем всё возможное» через MKTXP; отдельные неудачные API-вызовы смотрите в **`docker compose logs mktxp`**).
+Полный перечень см. **`central/.env.example`**.
 
 На устройстве RouterOS 7:
 
-- Включите API: `/ip service print` — **`api`** должна быть активна (`/ip service enable api` или задайте `disabled=no`, адрес ограничьте вашей центральной подсетью).
-- Создайте пользователя только с чтением и API (достаточно для MKTXP):
+- Включите сервис **`api`**: `/ip service enable api`, при необходимости ограничьте **`address`** подсетью центра; на **input**‑файрволе разрешите **TCP с центра** на порт API (**8728** или **8729** для API-SSL).
 
 ```
 /user group add name=mktxp_group policy=api,read
 /user add name=mktxp_user group=mktxp_group password=YOUR_STRONG_PASSWORD
 ```
 
-- Разрешите с центрального сервера подключение к порту API (по умолчанию **TCP 8728**; если используете **API SSL**, см. переменную `MKTXP_USE_SSL` и порт 8729 в документации MikroTik).
+Запуск на central: **`docker compose up -d mktxp vmagent`**. После правок **`.env`** или **`mktxp/render-config.py`**: **`docker compose up -d mktxp --force-recreate`**.
 
-Поднять экспортёр и vmagent:
+Проверка: с хоста central **`curl -sf http://127.0.0.1:49090/metrics | head`**; в Explore / VMUI — **`process_virtual_memory_bytes{job="mktxp"}`** или **`up{job="mktxp"}`** (см. **`scripts/check-monitoring.sh`**).
 
-`docker compose up -d mktxp vmagent`
+Дашборд: Grafana **ID 13679** (после **`scripts/download-dashboards.*`** файл **`central/dashboards/mktxp.json`**).
 
-Проверка: `curl -sf http://127.0.0.1:49090/metrics | head`; в Explore / VMUI — **`up{job="mktxp"} == 1`**. Дашборд по метрикам MKTXP: Grafana ID **13679** (после `scripts/download-dashboards.*` файл `central/dashboards/mktxp.json`).
+LTE и отдельные редкие подсистемы: при ошибках в **`docker compose logs mktxp`** проверьте, что сервис есть на устройстве; для старых версий ROS часть метрик может требовать политику **`test`** у группы пользователя.
 
 **Не используете MKTXP:** удалите сервис `mktxp` из `docker-compose.yml`, job `mktxp` из `vmagent/prometheus.yml` и уберите строку **`mktxp`** из **`depends_on`** у `vmagent`.
 
@@ -177,6 +189,8 @@ container_cpu_usage_seconds_total
 
 - Grafana `public-dashboards status=404` — не ошибка, Grafana проверяет публичную версию дашборда.
 - Grafana `POST /api/ds/query status=400` — обычно проблема переменной дашборда (`All`/пустое значение). Проверьте запрос в Explore.
+- **MKTXP** в логах: `no such command prefix` для **PoE** или **w60g** — на устройстве нет этого API (часто CRS без PoE / без W60G). Не включайте **`MKTXP_POE`** / **`MKTXP_W60G`**, если железо не поддерживает.
+- MKTXP `Fetching available ROS releases` — включён **`check_for_updates`** (профиль **`full`**); это обращение к RSS MikroTik, не ошибка.
 - VictoriaMetrics `unsupported path requested` для `/.env`, `/.git/config`, `/swagger` — внешние сканеры. Закройте порт 8428 firewall-ом для всех, кроме своих remote-серверов.
 - VictoriaMetrics `unsupported path requested` для `"/api/v1/write/api/v1/write"` — путь `/api/v1/write` указали дважды. У **remote** в `.env` в `CENTRAL_URL` должно быть только `http://хост:8428`. У **vmalert** `-remoteWrite.url` без суффикса `/api/v1/write`; после правки на central: `docker compose up -d`.
 - VictoriaMetrics `ignoring series with … labels` для `container_*` и `maxLabelsPerTimeseries` — у метрики слишком много лейблов (часто тяжёлый Docker-образ как NPM MySQL + cAdvisor). В `central/docker-compose.yml` задано `-maxLabelsPerTimeseries=64`; при необходимости поднимите осторожно или урежьте лейблы через relabel на vmagent.
@@ -189,7 +203,8 @@ central/
 ├── docker-compose.yml
 ├── alertmanager/alertmanager.yml
 ├── vmagent/prometheus.yml
-├── mktxp/                    # Шаблон: entrypoint + render-config под MKTXP (секреты только в .env)
+├── snmp_exporter/
+├── mktxp/                    # entrypoint + render-config под MKTXP (секреты только в .env)
 ├── rules/                    # Правила алертинга
 ├── grafana/provisioning/
 ├── dashboards/

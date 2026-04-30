@@ -66,8 +66,9 @@ if crs_like:
     bfd = bgp = routing_stats = certificate = container = False
     check_updates = False
 else:
-    # full: апстрим-шаблон + все коллекторы, которые там по умолчанию выключены
-    poe = env_bool("MKTXP_POE", True)
+    # full: почти всё из шаблона MKTXP; poe/w60g по умолчанию выкл. — на CRS и без PoE/w60g иначе
+    # «no such command prefix» каждый скрейп в логах.
+    poe = env_bool("MKTXP_POE", False)
     dhcp = True
     dhcp_lease = True
     installed_packages = True
@@ -76,7 +77,7 @@ else:
     ipv6_route = ipv6_pool = ipv6_firewall = ipv6_neighbor = True
     wireless = wireless_clients = True
     capsman = capsman_clients = True
-    w60g = True
+    w60g = env_bool("MKTXP_W60G", False)
     eoip = gre = ipip = lte = ipsec = True
     switch_port = True
     kid_assigned = kid_dynamic = True
