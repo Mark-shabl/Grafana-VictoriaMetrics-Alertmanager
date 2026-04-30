@@ -5,15 +5,16 @@
 - метрики самого стека мониторинга: VictoriaMetrics, vmagent, vmalert;
 - метрики центрального сервера: CPU, RAM, disk, network через node_exporter;
 - метрики Docker-контейнеров центрального сервера через cAdvisor;
+- метрики MikroTik / RouterOS: **SNMP** (snmp_exporter) и **API** (MKTXP для CRS326 и др.);
 - метрики удалённых серверов, если они отправляются из пакета `remote/`.
 
 ## Развёртывание
 
-Файл **`.env`** в каталоге `central/` задаёт секрет SNMP для MikroTik (переменная `MIKROTIK_SNMP_COMMUNITY`). Скопируйте `.env.example` → `.env` и пропишите community, как на роутере.
+Файл **`.env`** в каталоге `central/` задаёт секреты для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`) и учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`; см. пример переменных в `.env.example`). Скопируйте `.env.example` → `.env` и заполните значения.
 
 ```bash
 cd central
-cp -n .env.example .env   # если .env ещё нет; затем отредактируйте MIKROTIK_SNMP_COMMUNITY
+cp -n .env.example .env   # затем MIKROTIK_SNMP_COMMUNITY и MIKROTIK_API_*
 docker compose up -d
 ```
 
@@ -72,6 +73,7 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | node_exporter | http://localhost:9100 | — |
 | cAdvisor | http://localhost:8080 | — |
 | snmp_exporter | http://127.0.0.1:9116 | только локально |
+| MKTXP | http://127.0.0.1:49090/metrics | только локально |
 
 `vmagent`, `node_exporter` и cAdvisor в central используют host network, поэтому локальные метрики собираются через `127.0.0.1` без отдельного запуска `remote/`.
 
@@ -86,6 +88,7 @@ URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
 | 14950 | VictoriaMetrics - vmalert | Состояние vmalert |
 | 1860 | Node Exporter Full | CPU, RAM, disks, network хостов |
 | 14857 | MikroTik | Интерфейсы, трафик и состояние RouterOS через SNMP |
+| 13679 | MikroTik MKTXP | RouterOS через API (MKTXP): коммутаторы, `switch_port`, health и др. |
 | 14282 | Docker/cAdvisor | Docker-контейнеры |
 
 Скачать предустановленные дашборды на Linux-сервере:
@@ -116,7 +119,35 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 
 Проверка с центра: Explore / VMUI — `up{job="snmp_mikrotik"} == 1`, `up{job="snmp_if_mib"} == 1`, затем **`ifHCInOctets{job="snmp_if_mib"}`** (трафик по интерфейсам задаёт модуль **`if_mib`**, модуль **`mikrotik`** даёт **`mtxr*`** без `ifHCInOctets`). **instance** на дашборде — IP из `targets`.
 
-**Без роутера MikroTik:** удалите блоки `job_name: snmp_mikrotik` и `job_name: snmp_if_mib` из `vmagent/prometheus.yml` и сервис `snmp_exporter` из `docker-compose.yml`, чтобы не было ошибок scrape.
+### MKTXP (RouterOS API, коммутатор CRS326)
+
+Конфиг в контейнере пишется в **`/etc/mktxp`**; старт идёт как пользователь **`mktxp`** с **`mktxp --cfg-dir /etc/mktxp export`** (иначе MKTXP ищет `~/mktxp` и подставляет шаблон **Sample-Router**).
+
+Сервис **mktxp** в `central/docker-compose.yml` при старте собирает `mktxp.conf` из переменных **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST` (по умолчанию `192.168.88.1`), `MKTXP_ROUTER_SECTION` (имя секции конфига, по умолчанию `CRS326`). Профиль включён под **CRS** с **`switch_port = True`**, Wi‑Fi/CAPsMAN отключены по умолчанию.
+
+На устройстве RouterOS 7:
+
+- Включите API: `/ip service print` — **`api`** должна быть активна (`/ip service enable api` или задайте `disabled=no`, адрес ограничьте вашей центральной подсетью).
+- Создайте пользователя только с чтением и API (достаточно для MKTXP):
+
+```
+/user group add name=mktxp_group policy=api,read
+/user add name=mktxp_user group=mktxp_group password=YOUR_STRONG_PASSWORD
+```
+
+- Разрешите с центрального сервера подключение к порту API (по умолчанию **TCP 8728**; если используете **API SSL**, см. переменную `MKTXP_USE_SSL` и порт 8729 в документации MikroTik).
+
+Поднять экспортёр и vmagent:
+
+`docker compose up -d mktxp vmagent`
+
+Проверка: `curl -sf http://127.0.0.1:49090/metrics | head`; в Explore / VMUI — **`up{job="mktxp"} == 1`**. Дашборд по метрикам MKTXP: Grafana ID **13679** (после `scripts/download-dashboards.*` файл `central/dashboards/mktxp.json`).
+
+**Не используете MKTXP:** удалите сервис `mktxp` из `docker-compose.yml`, job `mktxp` из `vmagent/prometheus.yml` и уберите строку **`mktxp`** из **`depends_on`** у `vmagent`.
+
+### Если MikroTik нет вообще
+
+**Без роутера MikroTik:** удалите блоки `job_name: snmp_mikrotik` и `job_name: snmp_if_mib`, job `mktxp` из `vmagent/prometheus.yml` и строку **`mktxp`** из `depends_on` у `vmagent`; из `docker-compose.yml` удалите сервисы `snmp_exporter` и **`mktxp`**, чтобы не было ошибок scrape.
 
 Если `Node Exporter Full` или Docker/cAdvisor показывают `No data`, сначала проверьте:
 
@@ -149,6 +180,7 @@ central/
 ├── docker-compose.yml
 ├── alertmanager/alertmanager.yml
 ├── vmagent/prometheus.yml
+├── mktxp/                    # Шаблон: entrypoint + render-config под MKTXP (секреты только в .env)
 ├── rules/                    # Правила алертинга
 ├── grafana/provisioning/
 ├── dashboards/

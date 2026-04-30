@@ -7,6 +7,7 @@ $dashboards = @(
     @{ Id = 14950; File = "vmalert.json" }
     @{ Id = 1860;  File = "node-exporter.json" }
     @{ Id = 14857; File = "mikrotik.json" }
+    @{ Id = 13679; File = "mktxp.json" }
     @{ Id = 14282; File = "docker.json" }
 )
 

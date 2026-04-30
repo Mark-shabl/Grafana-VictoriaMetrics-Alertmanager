@@ -38,6 +38,7 @@ download_dashboard 12683 "vmagent.json"
 download_dashboard 14950 "vmalert.json"
 download_dashboard 1860 "node-exporter.json"
 download_dashboard 14857 "mikrotik.json"
+download_dashboard 13679 "mktxp.json"
 download_dashboard 14282 "docker.json"
 
 printf 'Done. Restart Grafana or run: docker compose restart grafana\n'

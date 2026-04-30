@@ -32,6 +32,7 @@ printf 'VictoriaMetrics health: OK (%s)\n' "${VM_URL}"
 check_query "scrape targets" 'up'
 check_query "node_exporter target" 'up{job="node_exporter"} == 1'
 check_query "cadvisor target" 'up{job="cadvisor"} == 1'
+check_query "mktxp target" 'up{job="mktxp"} == 1'
 check_query "host CPU metrics" 'node_cpu_seconds_total'
 check_query "container CPU metrics" 'container_cpu_usage_seconds_total'
 

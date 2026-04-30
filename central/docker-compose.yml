@@ -33,9 +33,32 @@ services:
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     restart: always
 
+  # RouterOS API → Prometheus (MKTXP); учётка и IP из .env (см. .env.example). Порт только localhost.
+  mktxp:
+    image: ghcr.io/akpw/mktxp:latest
+    user: root
+    ports:
+      - "127.0.0.1:49090:49090"
+    env_file:
+      - .env
+    environment:
+      MIKROTIK_API_HOST: ${MIKROTIK_API_HOST:-192.168.88.1}
+      MIKROTIK_API_PORT: ${MIKROTIK_API_PORT:-8728}
+      MKTXP_USE_SSL: ${MKTXP_USE_SSL:-False}
+      MKTXP_PLAINTEXT_LOGIN: ${MKTXP_PLAINTEXT_LOGIN:-True}
+      MKTXP_ROUTER_SECTION: ${MKTXP_ROUTER_SECTION:-CRS326}
+      MIKROTIK_API_USER: ${MIKROTIK_API_USER:-}
+      MIKROTIK_API_PASSWORD: ${MIKROTIK_API_PASSWORD:-}
+    volumes:
+      - ./mktxp/entrypoint.sh:/entrypoint.sh:ro
+      - ./mktxp/render-config.py:/render-config.py:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: always
+
   vmagent:
     image: victoriametrics/vmagent:v1.137.0
     depends_on:
+      - mktxp
       - snmp_exporter
       - node_exporter
       - cadvisor
