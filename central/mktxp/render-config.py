@@ -22,6 +22,9 @@ plaintext_login_raw = os.environ.get("MKTXP_PLAINTEXT_LOGIN", "True").strip().lo
 plaintext_login = plaintext_login_raw in ("1", "true", "yes", "on")
 router_section = os.environ.get("MKTXP_ROUTER_SECTION", "CRS326").strip() or "CRS326"
 
+poe_raw = os.environ.get("MKTXP_POE", "False").strip().lower()
+poe_enabled = poe_raw in ("1", "true", "yes", "on")
+
 user = os.environ.get("MIKROTIK_API_USER", "").strip()
 password = os.environ.get("MIKROTIK_API_PASSWORD")
 if not user or password is None or password == "":
@@ -86,7 +89,7 @@ ini = f"""[{router_section}]
     ipv6_neighbor = False
     ipv6_address_list = None
 
-    poe = True
+    poe = {poe_enabled}
     monitor = True
     netwatch = True
     public_ip = True

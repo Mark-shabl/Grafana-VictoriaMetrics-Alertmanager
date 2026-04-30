@@ -98,6 +98,8 @@ bash scripts/download-dashboards.sh
 docker compose restart grafana
 ```
 
+Если будет **Permission denied** при записи в `central/dashboards/`, каталог принадлежит **root** (часто после `sudo git clone/pull`): выполните `sudo bash scripts/download-dashboards.sh` или один раз **`sudo chown -R "$(whoami)":"$(whoami)" dashboards/`**.
+
 Или на Windows PowerShell:
 
 ```powershell
@@ -123,7 +125,9 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 
 Конфиг в контейнере пишется в **`/etc/mktxp`**; старт идёт как пользователь **`mktxp`** с **`mktxp --cfg-dir /etc/mktxp export`** (иначе MKTXP ищет `~/mktxp` и подставляет шаблон **Sample-Router**).
 
-Сервис **mktxp** в `central/docker-compose.yml` при старте собирает `mktxp.conf` из переменных **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST` (по умолчанию `192.168.88.1`), `MKTXP_ROUTER_SECTION` (имя секции конфига, по умолчанию `CRS326`). Профиль включён под **CRS** с **`switch_port = True`**, Wi‑Fi/CAPsMAN отключены по умолчанию.
+Сервис **mktxp** в `central/docker-compose.yml` при старте собирает `mktxp.conf` из переменных **`.env`**: `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`, при необходимости `MIKROTIK_API_HOST` (по умолчанию `192.168.88.1`), `MKTXP_ROUTER_SECTION` (имя секции конфига, по умолчанию `CRS326`), **`MKTXP_POE=True`** если на устройстве есть PoE и нужны соответствующие метрики (по умолчанию **выкл.**, чтобы не было ошибки `no such command prefix` на коммутаторах без PoE в API).
+
+Профиль включён под **CRS** с **`switch_port = True`**, Wi‑Fi/CAPsMAN отключены по умолчанию.
 
 На устройстве RouterOS 7:
 
