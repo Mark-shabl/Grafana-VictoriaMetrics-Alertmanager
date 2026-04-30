@@ -31,7 +31,8 @@ scrape_configs:
       - targets:
           - 127.0.0.1:8428
 
-  # MikroTik / RouterOS: цель SNMP — замените 192.168.88.1 на IP вашего роутера; module mikrotik — из snmp_exporter по умолчанию.
+  # MikroTik / RouterOS: цель SNMP — замените 192.168.88.1 на IP вашего роутера.
+  # модуль mikrotik — mtxr*, wireless и т.д.; ifHCInOctets и графики трафика по IF-MIB — только в модуле if_mib (оба нужны для dashboard 14857).
   - job_name: snmp_mikrotik
     static_configs:
       - targets:
@@ -42,6 +43,28 @@ scrape_configs:
     params:
       module:
         - mikrotik
+      auth:
+        - public_v2
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9116
+
+  - job_name: snmp_if_mib
+    static_configs:
+      - targets:
+          - 192.168.88.1
+        labels:
+          env: central
+    metrics_path: /snmp
+    params:
+      module:
+        - if_mib
       auth:
         - public_v2
     relabel_configs:

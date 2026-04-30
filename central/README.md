@@ -114,9 +114,9 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 3. В `central/vmagent/prometheus.yml` в job `snmp_mikrotik` укажите IP роутера в `targets:` (по умолчанию пример **192.168.88.1**).
 4. `docker compose up -d snmp_exporter vmagent`.
 
-Проверка с центра: Explore / VMUI, запрос `up{job="snmp_mikrotik"} == 1` и `ifHCInOctets{job="snmp_mikrotik"}`. Имя **instance** в дашборде должно совпасть с IP из `targets`.
+Проверка с центра: Explore / VMUI — `up{job="snmp_mikrotik"} == 1`, `up{job="snmp_if_mib"} == 1`, затем **`ifHCInOctets{job="snmp_if_mib"}`** (трафик по интерфейсам задаёт модуль **`if_mib`**, модуль **`mikrotik`** даёт **`mtxr*`** без `ifHCInOctets`). **instance** на дашборде — IP из `targets`.
 
-**Без роутера MikroTik:** удалите блок `job_name: snmp_mikrotik` из `vmagent/prometheus.yml` и сервис `snmp_exporter` из `docker-compose.yml`, чтобы не было ошибок scrape.
+**Без роутера MikroTik:** удалите блоки `job_name: snmp_mikrotik` и `job_name: snmp_if_mib` из `vmagent/prometheus.yml` и сервис `snmp_exporter` из `docker-compose.yml`, чтобы не было ошибок scrape.
 
 Если `Node Exporter Full` или Docker/cAdvisor показывают `No data`, сначала проверьте:
 
