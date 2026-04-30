@@ -54,7 +54,8 @@ services:
       - "--opentsdbListenAddr=:4242"
       - "--httpListenAddr=:8428"
       - "--influxListenAddr=:8089"
-      - "--vmalert.proxyURL=http://vmalert:8880"
+      # cAdvisor на контейнерах с кучей LABEL в образе может давать >40 лейблов на ряд (см. container_* blkio)
+      - "--maxLabelsPerTimeseries=64"
     restart: always
 
   grafana:
