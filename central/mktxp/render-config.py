@@ -22,7 +22,7 @@ def env_bool(var: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
-host = os.environ.get("MIKROTIK_API_HOST", "192.168.88.1").strip()
+host = os.environ.get("MIKROTIK_API_HOST", "mikrotik.lan").strip()
 port = int(os.environ.get("MIKROTIK_API_PORT", "8728"))
 use_ssl = env_bool("MKTXP_USE_SSL", False)
 plaintext_login = env_bool("MKTXP_PLAINTEXT_LOGIN", True)

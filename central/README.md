@@ -10,7 +10,7 @@
 
 ## Развёртывание
 
-Файл **`.env`** в каталоге `central/` задаёт секреты и опции для MikroTik: SNMP community (`MIKROTIK_SNMP_COMMUNITY`), учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`), профиль **`MKTXP_PROFILE`** и при необходимости **`MKTXP_POE`**, **`MKTXP_W60G`**, **`MKTXP_DHCP`** / **`MKTXP_DHCP_LEASE`** (для профиля `crs`) — полный список см. **`.env.example`**. Скопируйте `.env.example` → `.env` и заполните значения.
+Файл **`.env`** в каталоге `central/` задаёт секреты, **DNS-имена** внутренних хостов и опции MikroTik: `CENTRAL_HOST` (для подсказки в `remote/.env`), `MIKROTIK_SNMP_TARGET`, `MIKROTIK_SNMP_COMMUNITY`, учётные данные RouterOS API для MKTXP (`MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD`), профиль **`MKTXP_PROFILE`** и при необходимости **`MKTXP_POE`**, **`MKTXP_W60G`**, **`MKTXP_DHCP`** / **`MKTXP_DHCP_LEASE`** (для профиля `crs`) — полный список см. **`.env.example`**. Скопируйте `.env.example` → `.env` и замените **`monitoring.lan`**, **`mikrotik.lan`** на ваши домены.
 
 ```bash
 cd central
@@ -19,7 +19,7 @@ docker compose pull        # при обновлении репозитория 
 docker compose up -d
 ```
 
-Если пользователь не в группе **`docker`**, используйте **`sudo docker compose …`**. После смены **`render-config.py`**, **`.env`** (MKTXP) или **`MKTXP_PROFILE`** пересоздайте экспортёр: **`docker compose up -d mktxp --force-recreate`**.
+Если пользователь не в группе **`docker`**, используйте **`sudo docker compose …`**. После смены **`render-config.py`**, **`.env`** (MKTXP, **`MIKROTIK_SNMP_TARGET`**) или **`MKTXP_PROFILE`** пересоздайте экспортёры: **`docker compose up -d mktxp vmagent --force-recreate`**.
 
 После запуска откройте:
 
@@ -45,6 +45,22 @@ bash scripts/check-monitoring.sh
 
 Если проверка проходит, Grafana уже должна видеть метрики центрального сервера и контейнеров.
 
+## Ротация логов Docker (7 дней)
+
+Чтобы логи контейнеров не забивали диск, в `docker-compose.yml` задано ограничение **json-file**: до **7 файлов по 50 MB** на контейнер с `compress=true`. Это основной и безопасный механизм ротации Docker-логов.
+
+На **хосте** один раз установите безопасные лимиты для **systemd-journald** и ежедневный vacuum:
+
+```bash
+cd central
+sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh
+sudo docker compose up -d --force-recreate
+```
+
+Скрипт ставит drop-in для `journald` с лимитами по времени и размеру и добавляет cron на **03:00**. По умолчанию: **7 дней** и до **512 MB** журналов (`JOURNAL_MAX_USE=512M`). Другие значения: `sudo LOG_RETENTION_DAYS=14 JOURNAL_MAX_USE=1G bash scripts/install-log-retention.sh`.
+
+Ручной прогон: `sudo bash scripts/docker-log-retention.sh`.
+
 ## Важно: приём метрик с удалённых серверов
 
 Удалённые vmagent **отправляют** (push) метрики на VictoriaMetrics по порту **8428**. VictoriaMetrics принимает их без дополнительной настройки.
@@ -63,7 +79,21 @@ firewall-cmd --reload
 
 Замените `192.168.1.0/24` на подсеть или конкретные IP удалённых серверов. **Не открывайте порт для всех** (`ufw allow 8428/tcp` без `from`).
 
-URL для remote write: `http://ВАШ_IP:8428/api/v1/write`
+URL для remote write: `http://ВАШ_ДОМЕН_CENTRAL:8428/api/v1/write` (в `remote/.env` указывают только базу без `/api/v1/write`).
+
+## DNS и доменные имена
+
+Между серверами используйте **имена** (например `monitoring.lan`, `mikrotik.lan`), не IP:
+
+| Где | Переменная | Пример |
+|-----|------------|--------|
+| **central/.env** | `CENTRAL_HOST` | `monitoring.lan` |
+| **remote/.env** | `CENTRAL_URL` | `http://monitoring.lan:8428` |
+| **central/.env** | `MIKROTIK_SNMP_TARGET`, `MIKROTIK_API_HOST` | `mikrotik.lan` |
+
+**Central** и **remote** (vmagent в `network_mode: host`) резолвят имена через DNS хоста. **snmp_exporter** в bridge-сети Docker — если SNMP по имени не работает, пропишите A-запись во **внутреннем DNS** или добавьте в `docker-compose.yml` у `snmp_exporter` блок `dns: [IP_вашего_DNS]` (см. комментарий `INTERNAL_DNS` в `.env.example`).
+
+Firewall по-прежнему настраивают по **IP/подсети** агентов (ufw не резолвит домены в `from`); в приложениях — только hostname.
 
 ## Точки доступа
 
@@ -120,12 +150,11 @@ docker compose restart grafana
 
 Dashboard **MikroTik** читает метрики, которые уже в VictoriaMetrics (**snmp_exporter** опрашивает роутер, **vmagent** скрейпит exporter на `127.0.0.1:9116`).
 
-1. На MikroTik: SNMP вкл., community только для центра, файрвол **UDP/161**.
-2. В `central/.env`: `MIKROTIK_SNMP_COMMUNITY=<вашcommunity>`.
-3. В `central/vmagent/prometheus.yml` в job `snmp_mikrotik` укажите IP роутера в `targets:` (по умолчанию пример **192.168.88.1**).
-4. `docker compose up -d snmp_exporter vmagent`.
+1. На MikroTik: SNMP вкл., community только для центра, файрвол **UDP/161** (разрешить с IP central, не с домена).
+2. В `central/.env`: `MIKROTIK_SNMP_COMMUNITY=<вашcommunity>`, **`MIKROTIK_SNMP_TARGET=mikrotik.lan`** (ваш домен роутера).
+3. `docker compose up -d snmp_exporter vmagent --force-recreate` (таргет SNMP подставляется из `.env` в `vmagent/prometheus.yml.template`).
 
-Проверка с центра: Explore / VMUI — `up{job="snmp_mikrotik"} == 1`, `up{job="snmp_if_mib"} == 1`, затем **`ifHCInOctets{job="snmp_if_mib"}`** (трафик по интерфейсам задаёт модуль **`if_mib`**, модуль **`mikrotik`** даёт **`mtxr*`** без `ifHCInOctets`). **instance** на дашборде — IP из `targets`.
+Проверка с центра: Explore / VMUI — `up{job="snmp_mikrotik"} == 1`, `up{job="snmp_if_mib"} == 1`, затем **`ifHCInOctets{job="snmp_if_mib"}`** (трафик по интерфейсам задаёт модуль **`if_mib`**, модуль **`mikrotik`** даёт **`mtxr*`** без `ifHCInOctets`). **instance** на дашборде — hostname из **`MIKROTIK_SNMP_TARGET`**.
 
 ### MKTXP (RouterOS API)
 
@@ -140,7 +169,7 @@ Dashboard **MikroTik** читает метрики, которые уже в Vic
 |------------|------------|
 | `MKTXP_PROFILE` | **`full`** (по умолчанию) или **`crs`** / **`minimal`** / **`switch`** — см. список выше. |
 | `MIKROTIK_API_USER`, `MIKROTIK_API_PASSWORD` | Учётка RouterOS с политикой **`api`**, **`read`** (обязательно). |
-| `MIKROTIK_API_HOST`, `MIKROTIK_API_PORT` | Цель API (часто **`192.168.88.1`**, порт **8728**). |
+| `MIKROTIK_API_HOST`, `MIKROTIK_API_PORT` | Цель API — **домен** (например **`mikrotik.lan`**), порт **8728**. |
 | `MKTXP_ROUTER_SECTION` | Имя секции в конфиге MKTXP (отображается в логах/лейблах), например **`CRS326`**. |
 | `MKTXP_USE_SSL`, `MKTXP_PLAINTEXT_LOGIN` | TLS и режим логина (см. MKTXP README / RouterOS). |
 | `MKTXP_POE`, `MKTXP_W60G` | При **`True`** — сбор PoE / W60g (если API есть на устройстве). В **`crs`** отдельно задайте **`MKTXP_DHCP`**, **`MKTXP_DHCP_LEASE`**. |
@@ -202,7 +231,7 @@ container_cpu_usage_seconds_total
 central/
 ├── docker-compose.yml
 ├── alertmanager/alertmanager.yml
-├── vmagent/prometheus.yml
+├── vmagent/prometheus.yml.template
 ├── snmp_exporter/
 ├── mktxp/                    # entrypoint + render-config под MKTXP (секреты только в .env)
 ├── rules/                    # Правила алертинга
@@ -211,5 +240,7 @@ central/
 └── scripts/
     ├── download-dashboards.ps1
     ├── download-dashboards.sh
-    └── check-monitoring.sh
+    ├── check-monitoring.sh
+    ├── docker-log-retention.sh
+    └── install-log-retention.sh
 ```

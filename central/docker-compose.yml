@@ -1,5 +1,14 @@
+# json-file: capped per container; host journald retention is configured separately.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "7"
+    compress: "true"
+
 services:
   node_exporter:
+    logging: *default-logging
     image: prom/node-exporter:v1.7.0
     network_mode: host
     pid: host
@@ -10,6 +19,7 @@ services:
       - "--path.rootfs=/host"
 
   cadvisor:
+    logging: *default-logging
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     network_mode: host
     restart: always
@@ -23,9 +33,12 @@ services:
 
   # SNMP → Prometheus для RouterOS/MikroTik (dashboard 14857); community из .env (см. .env.example).
   snmp_exporter:
+    logging: *default-logging
     image: prom/snmp-exporter:v0.29.0
     ports:
       - "127.0.0.1:9116:9116"
+    env_file:
+      - .env
     environment:
       SNMP_COMMUNITY: ${MIKROTIK_SNMP_COMMUNITY:-public}
     volumes:
@@ -33,8 +46,9 @@ services:
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     restart: always
 
-  # RouterOS API → Prometheus (MKTXP); учётка и IP из .env (см. .env.example). Порт только localhost.
+  # RouterOS API → Prometheus (MKTXP); хост API из .env (домен). Порт только localhost.
   mktxp:
+    logging: *default-logging
     image: ghcr.io/akpw/mktxp:latest
     user: root
     ports:
@@ -42,7 +56,7 @@ services:
     env_file:
       - .env
     environment:
-      MIKROTIK_API_HOST: ${MIKROTIK_API_HOST:-192.168.88.1}
+      MIKROTIK_API_HOST: ${MIKROTIK_API_HOST:-mikrotik.lan}
       MIKROTIK_API_PORT: ${MIKROTIK_API_PORT:-8728}
       MKTXP_PROFILE: ${MKTXP_PROFILE:-full}
       MKTXP_USE_SSL: ${MKTXP_USE_SSL:-False}
@@ -57,6 +71,7 @@ services:
     restart: always
 
   vmagent:
+    logging: *default-logging
     image: victoriametrics/vmagent:v1.137.0
     depends_on:
       - mktxp
@@ -65,15 +80,26 @@ services:
       - cadvisor
       - victoriametrics
     network_mode: host
+    env_file:
+      - .env
+    environment:
+      MIKROTIK_SNMP_TARGET: ${MIKROTIK_SNMP_TARGET:-mikrotik.lan}
     volumes:
       - vmagentdata:/vmagentdata
-      - ./vmagent/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./vmagent/prometheus.yml.template:/etc/prometheus/prometheus.template.yml:ro
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--remoteWrite.url=http://127.0.0.1:8428/api/v1/write"
+      - |
+        set -eu
+        sed "s#__MIKROTIK_SNMP_TARGET__#$${MIKROTIK_SNMP_TARGET}#g" \
+          /etc/prometheus/prometheus.template.yml > /tmp/prometheus.yml
+        exec /vmagent-prod \
+          -promscrape.config=/tmp/prometheus.yml \
+          -remoteWrite.url=http://127.0.0.1:8428/api/v1/write
     restart: always
 
   victoriametrics:
+    logging: *default-logging
     image: victoriametrics/victoria-metrics:v1.137.0
     ports:
       - 8428:8428
@@ -96,6 +122,7 @@ services:
     restart: always
 
   grafana:
+    logging: *default-logging
     image: grafana/grafana:12.2.0
     depends_on:
       - victoriametrics
@@ -113,6 +140,7 @@ services:
     restart: always
 
   vmalert:
+    logging: *default-logging
     image: victoriametrics/vmalert:v1.137.0
     depends_on:
       - victoriametrics
@@ -136,6 +164,7 @@ services:
     restart: always
 
   alertmanager:
+    logging: *default-logging
     image: prom/alertmanager:v0.28.1
     volumes:
       - ./alertmanager/alertmanager.yml:/config/alertmanager.yml

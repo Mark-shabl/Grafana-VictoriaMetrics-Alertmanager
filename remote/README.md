@@ -29,11 +29,11 @@ cp .env.example .env
 Откройте `.env` и укажите:
 
 ```
-CENTRAL_URL=http://192.168.1.100:8428
+CENTRAL_URL=http://monitoring.lan:8428
 REMOTE_NAME=server1
 ```
 
-- **`CENTRAL_URL`** — только базовый адрес VictoriaMetrics (`http://IP:8428`), **без** `/api/v1/write` (путь добавляет `docker-compose.yml` у vmagent).
+- **`CENTRAL_URL`** — только базовый адрес VictoriaMetrics по **доменному имени** (`http://monitoring.lan:8428`), **без** `/api/v1/write` (путь добавляет `docker-compose.yml` у vmagent). На каждом remote-хосте имя должно резолвиться (DNS или `/etc/hosts`).
 - **`REMOTE_NAME`** — уникальное имя этого сервера (**одно место правки**). Из него vmagent ставит лейбл **`host`** при отправке на central и **`instance`** в scrape-конфиге из шаблона `prometheus.yml.template`, чтобы дашборд **Node Exporter Full** корректно различал remote по переменной **Instance**. Раньше в примерах использовалась переменная **`HOSTNAME`**, её переименовали на **`REMOTE_NAME`**, чтобы значение случайной shell-переменной `HOSTNAME` на Linux не подменяло подстановку в `docker compose`.
 - `remote` использует отдельные локальные порты, чтобы не конфликтовать с `central`, если их случайно запустить на одной машине:
   - node_exporter: **19100**
@@ -45,6 +45,16 @@ REMOTE_NAME=server1
 ```bash
 docker compose up -d
 ```
+
+После обновления репозитория пересоздайте контейнеры, чтобы применились лимиты логов: `docker compose up -d --force-recreate`.
+
+На хосте можно поставить безопасные лимиты для `journald` и ежедневный vacuum прямо из `remote/`:
+
+```bash
+sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh
+```
+
+По умолчанию это даёт до **7 дней** и до **512 MB** журналов (`JOURNAL_MAX_USE=512M`). Docker-логи самих контейнеров ограничиваются через `docker-compose.yml` (`max-size`, `max-file`, `compress=true`).
 
 ## Проверка
 
@@ -82,6 +92,9 @@ ufw reload
 remote/
 ├── docker-compose.yml
 ├── prometheus.yml.template   # шаблон; __REMOTE_NAME__ подставляется из REMOTE_NAME в .env при старте vmagent
+├── scripts/
+│   ├── docker-log-retention.sh
+│   └── install-log-retention.sh
 ├── .env.example
 └── README.md
 ```

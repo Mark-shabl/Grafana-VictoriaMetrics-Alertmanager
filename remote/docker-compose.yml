@@ -1,5 +1,13 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "7"
+    compress: "true"
+
 services:
   node_exporter:
+    logging: *default-logging
     image: prom/node-exporter:v1.7.0
     network_mode: host
     pid: host
@@ -11,6 +19,7 @@ services:
       - "--web.listen-address=:19100"
 
   cadvisor:
+    logging: *default-logging
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     network_mode: host
     restart: always
@@ -25,6 +34,7 @@ services:
     privileged: true
 
   vmagent:
+    logging: *default-logging
     image: victoriametrics/vmagent:v1.137.0
     network_mode: host
     depends_on:

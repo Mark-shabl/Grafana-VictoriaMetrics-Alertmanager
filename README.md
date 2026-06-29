@@ -52,7 +52,7 @@ docker compose restart grafana
 ```bash
 cd remote
 cp .env.example .env
-# Отредактируйте .env — впишите CENTRAL_URL и REMOTE_NAME
+# Отредактируйте .env — впишите CENTRAL_URL (домен central) и REMOTE_NAME
 docker compose up -d
 ```
 
@@ -62,10 +62,14 @@ docker compose up -d
 
 | Где | Что вписать | Пример |
 |-----|-------------|--------|
-| **remote/.env** | `CENTRAL_URL` — адрес центрального сервера | `http://192.168.1.100:8428` |
+| **remote/.env** | `CENTRAL_URL` — домен central (не IP) | `http://monitoring.lan:8428` |
 | **remote/.env** | `REMOTE_NAME` — имя сервера в Grafana, лейбл `host` и `instance` для scrape | `db-prod-1` |
-| **Firewall центрального сервера** | Входящий TCP порт 8428 | Разрешить с IP удалённых серверов |
-| **Firewall удалённого сервера** | Исходящий доступ на central:8428 | Обычно уже разрешён |
+| **Firewall центрального сервера** | Входящий TCP порт 8428 | Разрешить с IP/подсети удалённых серверов (ufw по IP, не по домену) |
+| **Firewall удалённого сервера** | Исходящий доступ на central:8428 | Обычно уже разрешён; destination — домен из `CENTRAL_URL` |
+
+**Домены вместо IP:** в `.env` указывают hostname (`monitoring.lan`, `mikrotik.lan` и т.д.). Firewall на central по-прежнему настраивают по IP/подсети агентов. Подробнее: [central/README.md](central/README.md#dns-и-доменные-имена).
+
+**Логи и диск:** контейнерные логи ограничены прямо в compose (`max-size`, `max-file`, `compress=true`). Для системных логов ставьте `sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh` в `central/` или `remote/` на соответствующем хосте.
 
 <a id="firewall-setup"></a>
 
@@ -112,13 +116,13 @@ sudo firewall-cmd --reload
 
 Замените `192.168.1.0/24` на свою подсеть или добавьте отдельные `rich-rule` для каждого IP.
 
-После изменений с **удалённой** машины проверьте доступность порта, например: `curl -sf "http://IP_ЦЕНТРА:8428/api/v1/labels?limit=1"` (должен вернуть JSON) или `nc -zv IP_ЦЕНТРА 8428`. Окончательно — запуск `remote` и `docker compose logs vmagent`: не должно быть ошибок отправки на `remoteWrite.url`.
+После изменений с **удалённой** машины проверьте доступность порта, например: `curl -sf "http://monitoring.lan:8428/api/v1/labels?limit=1"` (должен вернуть JSON) или `nc -zv monitoring.lan 8428`. Окончательно — запуск `remote` и `docker compose logs vmagent`: не должно быть ошибок отправки на `remoteWrite.url`.
 
 ### Удалённый сервер
 
 Нужен **исходящий** доступ к центру: TCP с хоста (или из контейнеров при вашей сетевой схеме) на `CENTRAL_HOST:8428`. Входящие порты для приёма метрик центром **не** открываются на remote.
 
-Если на удалённой машине включён строгий исходящий firewall — добавьте разрешение на destination `IP_центра`, порт `8428`, протокол TCP.
+Если на удалённой машине включён строгий исходящий firewall — добавьте разрешение на destination **`monitoring.lan`** (или IP central), порт `8428`, протокол TCP.
 
 Стандартный `docker compose` для `remote` в репозитории обычно не требует открывать **входящие** порты во внешний мир: node_exporter/cAdvisor слушают для локального vmagent (см. [remote/README.md](remote/README.md)).
 
@@ -130,7 +134,7 @@ sudo firewall-cmd --reload
 
 2. **На центральном сервере** — открыть порт 8428 **только для IP ваших удалённых серверов** (см. [«Настройка firewall»](#firewall-setup)).
 
-3. **На удалённом сервере** — в `remote/.env` указать `CENTRAL_URL=http://IP_CENTRAL:8428` и запустить `docker compose up -d`. vmagent сам начнёт отправлять метрики.
+3. **На удалённом сервере** — в `remote/.env` указать `CENTRAL_URL=http://monitoring.lan:8428` (ваш домен central) и запустить `docker compose up -d`. vmagent сам начнёт отправлять метрики.
 
 ## Безопасность
 
