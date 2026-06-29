@@ -2,21 +2,21 @@
 
 Стек мониторинга из двух пакетов:
 
-- **central** — полный стек на центральном сервере: VictoriaMetrics, Grafana, vmalert, Alertmanager, vmagent, node_exporter, cAdvisor, **snmp_exporter** и **MKTXP** (метрики MikroTik по SNMP и по RouterOS API).
-- **remote** — агент для остальных Linux-серверов: node_exporter, cAdvisor, vmagent.
+- **GrafanaCentral** — полный стек на центральном сервере: VictoriaMetrics, Grafana, vmalert, Alertmanager, vmagent, node_exporter, cAdvisor, **snmp_exporter** и **MKTXP** (метрики MikroTik по SNMP и по RouterOS API).
+- **GrafanaRemote** — агент для остальных Linux-серверов: node_exporter, cAdvisor, vmagent.
 
 ## Схема
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Центральный сервер (central/)                                  │
+│  Центральный сервер (GrafanaCentral/)                           │
 │  VictoriaMetrics · Grafana · vmalert · Alertmanager · vmagent   │
 │  node_exporter · cAdvisor · snmp_exporter · MKTXP (MikroTik)    │
 │  Хранение метрик, дашборды, алерты, метрики самого central      │
 └────────────────────────────▲────────────────────────────────────┘
                              │ remote write :8428
 ┌────────────────────────────┴────────────────────────────────────┐
-│  Удалённый сервер (remote/)                                     │
+│  Удалённый сервер (GrafanaRemote/)                              │
 │  node_exporter · cAdvisor · vmagent — сбор и отправка метрик     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -26,21 +26,21 @@
 ### 1. Центральный сервер
 
 ```bash
-cd central
-cp -n .env.example .env   # при использовании MikroTik: MIKROTIK_* — см. central/README.md
+cd GrafanaCentral
+cp -n .env.example .env   # при использовании MikroTik: MIKROTIK_* — см. GrafanaCentral/README.md
 docker compose pull
 docker compose up -d
 bash scripts/check-monitoring.sh
 ```
 
-Подробнее (SNMP, MKTXP, дашборды, firewall): [central/README.md](central/README.md)
+Подробнее (SNMP, MKTXP, дашборды, firewall): [GrafanaCentral/README.md](GrafanaCentral/README.md)
 
 После этого Grafana уже должна показывать метрики самого центрального сервера и его Docker-контейнеров.
 
 Чтобы скачать выбранные дашборды:
 
 ```bash
-cd central
+cd GrafanaCentral
 bash scripts/download-dashboards.sh
 docker compose restart grafana
 ```
@@ -50,26 +50,26 @@ docker compose restart grafana
 ### 2. Удалённый сервер
 
 ```bash
-cd remote
+cd GrafanaRemote
 cp .env.example .env
 # Отредактируйте .env — впишите CENTRAL_URL (домен central) и REMOTE_NAME
 docker compose up -d
 ```
 
-Подробнее: [remote/README.md](remote/README.md)
+Подробнее: [GrafanaRemote/README.md](GrafanaRemote/README.md)
 
 ## Как связать — что куда вписать
 
 | Где | Что вписать | Пример |
 |-----|-------------|--------|
-| **remote/.env** | `CENTRAL_URL` — домен central (не IP) | `http://monitoring.lan:8428` |
-| **remote/.env** | `REMOTE_NAME` — имя сервера в Grafana, лейбл `host` и `instance` для scrape | `db-prod-1` |
+| **GrafanaRemote/.env** | `CENTRAL_URL` — домен central (не IP) | `http://monitoring.lan:8428` |
+| **GrafanaRemote/.env** | `REMOTE_NAME` — имя сервера в Grafana, лейбл `host` и `instance` для scrape | `db-prod-1` |
 | **Firewall центрального сервера** | Входящий TCP порт 8428 | Разрешить с IP/подсети удалённых серверов (ufw по IP, не по домену) |
 | **Firewall удалённого сервера** | Исходящий доступ на central:8428 | Обычно уже разрешён; destination — домен из `CENTRAL_URL` |
 
-**Домены вместо IP:** в `.env` указывают hostname (`monitoring.lan`, `mikrotik.lan` и т.д.). Firewall на central по-прежнему настраивают по IP/подсети агентов. Подробнее: [central/README.md](central/README.md#dns-и-доменные-имена).
+**Домены вместо IP:** в `.env` указывают hostname (`monitoring.lan`, `mikrotik.lan` и т.д.). Firewall на central по-прежнему настраивают по IP/подсети агентов. Подробнее: [GrafanaCentral/README.md](GrafanaCentral/README.md#dns-и-доменные-имена).
 
-**Логи и диск:** контейнерные логи ограничены прямо в compose (`max-size`, `max-file`, `compress=true`). Для системных логов ставьте `sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh` в `central/` или `remote/` на соответствующем хосте.
+**Логи и диск:** контейнерные логи ограничены прямо в compose (`max-size`, `max-file`, `compress=true`). Для системных логов ставьте `sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh` в `GrafanaCentral/` или `GrafanaRemote/` на соответствующем хосте.
 
 <a id="firewall-setup"></a>
 
@@ -79,7 +79,7 @@ docker compose up -d
 
 Цель: **видеть UI** с доверенных адресов и **принимать remote write** только с IP удалённых агентов. VictoriaMetrics на `/api/v1/write` **без пароля** — порт **8428** нельзя оставлять открытым для всего интернета.
 
-Порты, которые фактически слушает стек из `central/docker-compose.yml` (и типичные host-сервисы):
+Порты, которые фактически слушает стек из `GrafanaCentral/docker-compose.yml` (и типичные host-сервисы):
 
 | Порт | Назначение | Рекомендация |
 |------|------------|--------------|
@@ -95,7 +95,7 @@ docker compose up -d
 **Примеры — только удалённые агенты на 8428 (ufw, Ubuntu/Debian):**
 
 ```bash
-# подсеть серверов с remote/
+# подсеть серверов с GrafanaRemote/
 sudo ufw allow from 192.168.1.0/24 to any port 8428 proto tcp
 
 # или по одному IP
@@ -124,7 +124,7 @@ sudo firewall-cmd --reload
 
 Если на удалённой машине включён строгий исходящий firewall — добавьте разрешение на destination **`monitoring.lan`** (или IP central), порт `8428`, протокол TCP.
 
-Стандартный `docker compose` для `remote` в репозитории обычно не требует открывать **входящие** порты во внешний мир: node_exporter/cAdvisor слушают для локального vmagent (см. [remote/README.md](remote/README.md)).
+Стандартный `docker compose` для `GrafanaRemote` в репозитории обычно не требует открывать **входящие** порты во внешний мир: node_exporter/cAdvisor слушают для локального vmagent (см. [GrafanaRemote/README.md](GrafanaRemote/README.md)).
 
 ## Как центральный сервер принимает метрики
 
@@ -134,7 +134,7 @@ sudo firewall-cmd --reload
 
 2. **На центральном сервере** — открыть порт 8428 **только для IP ваших удалённых серверов** (см. [«Настройка firewall»](#firewall-setup)).
 
-3. **На удалённом сервере** — в `remote/.env` указать `CENTRAL_URL=http://monitoring.lan:8428` (ваш домен central) и запустить `docker compose up -d`. vmagent сам начнёт отправлять метрики.
+3. **На удалённом сервере** — в `GrafanaRemote/.env` указать `CENTRAL_URL=http://monitoring.lan:8428` (ваш домен central) и запустить `docker compose up -d`. vmagent сам начнёт отправлять метрики.
 
 ## Безопасность
 
@@ -155,24 +155,24 @@ sudo firewall-cmd --reload
 | Docker-контейнеры | cadvisor | `container_cpu_usage_seconds_total`, `container_memory_usage_bytes` |
 | Трафик контейнеров | cadvisor | `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
 | MikroTik / RouterOS (SNMP) | snmp_exporter | трафик интерфейсов, `if_mib` / `mikrotik`, MTXR |
-| MikroTik / RouterOS (API) | mktxp | MKTXP: health, DHCP, switch port, маршруты и др. (см. профиль в `central/`) |
+| MikroTik / RouterOS (API) | mktxp | MKTXP: health, DHCP, switch port, маршруты и др. (см. профиль в `GrafanaCentral/`) |
 
 **Фильтр по серверу:** добавьте `host="server1"` к запросу. Дашборды Node Exporter и Docker — создайте переменную `host` (Label = `host`).
 
-**Важно:** на каждом удалённом сервере задаётте свой **`REMOTE_NAME`** в `remote/.env` (разные машины не должны совпадать).
+**Важно:** на каждом удалённом сервере задаётте свой **`REMOTE_NAME`** в `GrafanaRemote/.env` (разные машины не должны совпадать).
 
 ## Быстрая диагностика
 
 На central:
 
 ```bash
-cd central
+cd GrafanaCentral
 bash scripts/check-monitoring.sh
 ```
 
 Если скрипт проходит, VictoriaMetrics уже содержит базовые метрики `up`, `node_cpu_seconds_total` и `container_cpu_usage_seconds_total`.
 
-Для дашборда **MikroTik** (SNMP) в VictoriaMetrics нужны метрики от `snmp_exporter` (job `snmp_mikrotik` / `snmp_if_mib`). Для дашборда **MikroTik MKTXP** — скрейп **MKTXP** (`job="mktxp"`). Подробности и профили MKTXP: [central/README.md](central/README.md).
+Для дашборда **MikroTik** (SNMP) в VictoriaMetrics нужны метрики от `snmp_exporter` (job `snmp_mikrotik` / `snmp_if_mib`). Для дашборда **MikroTik MKTXP** — скрейп **MKTXP** (`job="mktxp"`). Подробности и профили MKTXP: [GrafanaCentral/README.md](GrafanaCentral/README.md).
 
 В Grafana:
 
@@ -184,10 +184,10 @@ bash scripts/check-monitoring.sh
 
 | Пакет | Назначение |
 |-------|------------|
-| [central/](central/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager, метрики central, SNMP и MKTXP для MikroTik. |
-| [remote/](remote/) | Агент для других Linux-серверов: node_exporter, cAdvisor, vmagent. |
+| [GrafanaCentral/](GrafanaCentral/) | Полный стек: VictoriaMetrics, Grafana, vmalert, Alertmanager, метрики central, SNMP и MKTXP для MikroTik. |
+| [GrafanaRemote/](GrafanaRemote/) | Агент для других Linux-серверов: node_exporter, cAdvisor, vmagent. |
 
 ## Требования
 
 - Docker и Docker Compose
-- **remote/** — Linux (node_exporter использует host paths)
+- **GrafanaRemote/** — Linux (node_exporter использует host paths)

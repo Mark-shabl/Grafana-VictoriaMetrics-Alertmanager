@@ -1,3 +1,5 @@
+name: central
+
 # json-file: capped per container; host journald retention is configured separately.
 x-logging: &default-logging
   driver: json-file

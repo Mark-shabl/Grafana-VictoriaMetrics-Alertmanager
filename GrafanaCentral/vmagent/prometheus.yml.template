@@ -31,7 +31,7 @@ scrape_configs:
       - targets:
           - 127.0.0.1:8428
 
-  # MikroTik / RouterOS: цель SNMP — домен или hostname из MIKROTIK_SNMP_TARGET в central/.env.
+  # MikroTik / RouterOS: цель SNMP — домен или hostname из MIKROTIK_SNMP_TARGET в GrafanaCentral/.env.
   # модуль mikrotik — mtxr*, wireless и т.д.; ifHCInOctets и графики трафика по IF-MIB — только в модуле if_mib (оба нужны для dashboard 14857).
   - job_name: snmp_mikrotik
     static_configs:

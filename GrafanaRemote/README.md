@@ -2,7 +2,7 @@
 
 Пакет нужен на **других Linux-серверах**, которые должны отправлять метрики в центральную VictoriaMetrics.
 
-На самом центральном сервере запускать `remote/` больше не обязательно: `central/` уже включает node_exporter и cAdvisor для мониторинга самого себя.
+На самом центральном сервере запускать `GrafanaRemote/` больше не обязательно: `GrafanaCentral/` уже включает node_exporter и cAdvisor для мониторинга самого себя.
 
 ## Что входит
 
@@ -48,7 +48,7 @@ docker compose up -d
 
 После обновления репозитория пересоздайте контейнеры, чтобы применились лимиты логов: `docker compose up -d --force-recreate`.
 
-На хосте можно поставить безопасные лимиты для `journald` и ежедневный vacuum прямо из `remote/`:
+На хосте можно поставить безопасные лимиты для `journald` и ежедневный vacuum прямо из `GrafanaRemote/`:
 
 ```bash
 sudo LOG_RETENTION_DAYS=7 bash scripts/install-log-retention.sh
@@ -89,7 +89,7 @@ ufw reload
 ## Структура
 
 ```
-remote/
+GrafanaRemote/
 ├── docker-compose.yml
 ├── prometheus.yml.template   # шаблон; __REMOTE_NAME__ подставляется из REMOTE_NAME в .env при старте vmagent
 ├── scripts/

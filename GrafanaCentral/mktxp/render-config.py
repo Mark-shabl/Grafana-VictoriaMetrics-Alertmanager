@@ -2,7 +2,7 @@
 """Generate /etc/mktxp/mktxp.conf and credentials.yml from environment (credentials never in INI).
 
 Required: MIKROTIK_API_USER, MIKROTIK_API_PASSWORD.
-Optional: see central/.env.example — MKTXP_PROFILE=full (default) or crs / minimal / switch.
+Optional: see GrafanaCentral/.env.example — MKTXP_PROFILE=full (default) or crs / minimal / switch.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ password = os.environ.get("MIKROTIK_API_PASSWORD")
 if not user or password is None or password == "":
     raise SystemExit(
         "MIKROTIK_API_USER and MIKROTIK_API_PASSWORD must be set "
-        "(e.g. via central/.env); API user needs policy api,read on RouterOS."
+        "(e.g. via GrafanaCentral/.env); API user needs policy api,read on RouterOS."
     )
 
 CRED_PATH.write_text(
