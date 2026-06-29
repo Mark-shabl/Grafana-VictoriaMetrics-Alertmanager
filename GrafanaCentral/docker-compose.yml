@@ -1,4 +1,4 @@
-name: central
+name: grafana-central
 
 # json-file: capped per container; host journald retention is configured separately.
 x-logging: &default-logging

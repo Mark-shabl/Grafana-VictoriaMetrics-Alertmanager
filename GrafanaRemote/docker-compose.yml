@@ -1,4 +1,4 @@
-name: remote
+name: grafana-remote
 
 x-logging: &default-logging
   driver: json-file
